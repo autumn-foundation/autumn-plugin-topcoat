@@ -1,7 +1,8 @@
 //! Content-Security-Policy analysis for Topcoat.
 //!
-//! Autumn sets the `Content-Security-Policy` header on each response. The
-//! Topcoat runtime needs three things from that policy:
+//! Autumn sets the `Content-Security-Policy` header on each response when the
+//! policy is not empty. The Topcoat runtime needs three things from that
+//! policy:
 //!
 //! - `'unsafe-eval'` in `script-src`, because the runtime compiles
 //!   expressions with `new Function`.
@@ -13,7 +14,7 @@
 //!
 //! # Contract
 //!
-//! - `analyze` never panics. An empty or blank policy is disabled and has no
+//! - `analyze` never panics. An empty or blank policy turns off CSP and has no
 //!   findings.
 //! - A policy string can hold more than one policy, separated by commas. The
 //!   findings are the union of the findings of each policy.
@@ -53,7 +54,7 @@ pub enum CspFinding {
     EvalBlocked,
     /// `require-trusted-types-for 'script'` blocks `new Function`.
     TrustedTypesBlockEval,
-    /// Inline scripts are blocked. Streamed swaps and redirects do not run.
+    /// The policy blocks inline scripts. Streamed swaps and redirects do not run.
     InlineBlocked(InlineBlock),
     /// The runtime module from `/_topcoat/assets` cannot load.
     ModuleBlocked,
@@ -89,7 +90,7 @@ pub struct CspReport {
 }
 
 impl CspReport {
-    /// Returns `true` if the policy does not block Topcoat.
+    /// Returns `true` if the analysis finds no problem.
     #[must_use]
     pub const fn is_clean(&self) -> bool {
         self.findings.is_empty()
@@ -110,7 +111,7 @@ impl std::fmt::Display for CspFinding {
             Self::InlineBlocked(InlineBlock::MissingUnsafeInline) => {
                 "script elements have no 'unsafe-inline'"
             }
-            Self::ModuleBlocked => "same-origin module scripts are blocked",
+            Self::ModuleBlocked => "the policy blocks same-origin module scripts",
             Self::ConnectBlocked => "connect-src blocks same-origin connections",
             Self::SandboxBlocksScripts => "sandbox without allow-scripts blocks all scripts",
             Self::SandboxOpaqueOrigin => {
@@ -225,7 +226,8 @@ struct Policy {
     directives: Vec<Directive>,
 }
 
-/// Parses a header value into its policies. Policies with no directive are dropped.
+/// Parses a header value into its policies. The parser drops policies with no
+/// directive.
 fn parse(text: &str) -> Vec<Policy> {
     text.split(',')
         .map(|policy| Policy {

@@ -4,13 +4,16 @@
 ///
 /// The Topcoat runtime sends JSON `POST` requests without the Autumn CSRF
 /// header. With [`CsrfBridge::SameOriginRuntime`], the plugin copies the CSRF
-/// cookie into the CSRF header for same-origin runtime requests only. See the
-/// crate docs for the full rule list.
+/// cookie into the CSRF header for same-origin runtime requests only. The
+/// crate docs give the full rule list.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum CsrfBridge {
     /// Copy the CSRF cookie into the CSRF header for same-origin runtime
-    /// requests. The bridge does nothing when Autumn CSRF is off.
+    /// requests.
+    ///
+    /// When Autumn CSRF is off, the layer changes no request. It stays in the
+    /// stack and adds a small cost to each request. Use `Off` to remove it.
     #[default]
     SameOriginRuntime,
     /// Never change requests. Autumn CSRF rejects runtime `POST` requests.
@@ -23,7 +26,8 @@ pub enum CsrfBridge {
 pub enum CspCheck {
     /// Do not analyze the policy.
     Off,
-    /// Write one warning for each problem, with a policy that fixes it.
+    /// Write one warning for each problem. The warning gives a policy that
+    /// fixes it, when the plugin can make one.
     #[default]
     Warn,
     /// Stop the startup when the policy blocks Topcoat.

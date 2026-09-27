@@ -46,7 +46,7 @@ async fn each_invalid_option_is_named() {
             .runtime_prefix("/:x"),
     );
     assert!(panic.contains("invalid mount path"), "{panic}");
-    assert!(panic.contains("reserved by Autumn static files"), "{panic}");
+    assert!(panic.contains("belongs to Autumn static files"), "{panic}");
     assert!(panic.contains("invalid excluded prefix"), "{panic}");
     assert!(panic.contains("invalid runtime prefix"), "{panic}");
 }

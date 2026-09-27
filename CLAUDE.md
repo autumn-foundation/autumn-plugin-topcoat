@@ -8,17 +8,20 @@ Guidance for agents that work on this crate.
 
 ## Commands
 
-The toolchain is pinned to Rust 1.98.1 (`rust-toolchain.toml`). Topcoat 0.9 needs 1.98.
+`rust-toolchain.toml` pins the toolchain to Rust 1.98.1. Topcoat 0.9 needs 1.98.
 
 ```sh
 cargo fmt --all -- --check
-cargo clippy --all-targets --all-features -- -D warnings
-cargo check --lib
-cargo test --all-targets --all-features
-cargo test --doc
-cargo llvm-cov --all-features --fail-under-lines 90
+cargo clippy --locked --all-targets --all-features -- -D warnings
+cargo check --locked --lib
+cargo test --locked --all-targets --all-features
+cargo test --locked --doc --all-features
+cargo llvm-cov --locked --all-features --ignore-filename-regex '/tests\.rs$' --fail-under-lines 90
 AUTUMN_DUMP_ROUTES=1 cargo run -q --example host
+AUTUMN_DUMP_ROUTES=1 cargo run -q --example prefix_host
 ```
+
+The coverage gate measures production code only. Put unit tests in `src/<module>/tests.rs`, so that the gate ignores them.
 
 ## Architecture
 
@@ -38,7 +41,7 @@ AUTUMN_DUMP_ROUTES=1 cargo run -q --example host
 | `fallthrough` | pure | Autumn 404 and favicon 204 |
 | `autumn` | public | Helpers for Topcoat pages |
 
-Each pure module has a `# Contract` doc section and property tests. Change the contract first, then the tests, then the code.
+Each pure module has a `# Contract` doc section and property tests. Change the contract first. Then change the tests. Then change the code.
 
 ## Rules that the design depends on
 
@@ -55,6 +58,8 @@ Each pure module has a `# Contract` doc section and property tests. Change the c
 - `tracing` caches callsite interest for all threads. Tests that capture events hold `common::serial()`.
 - The `tests/axum_guards.rs` tests pin axum behavior. If one fails after an upgrade, review the ADR.
 - Verus is not available here. Property tests stand in for proofs.
+- The dev-dependency on `autumn-web` turns on `maud`, `htmx`, `flash`, `reporting` and `openapi`. The library itself uses no default features.
+- A property test that compares with a model must reach each rule. `csrf::tests::generators_reach_each_rule` checks this for the bridge.
 
 ## Documentation style
 

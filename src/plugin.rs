@@ -97,12 +97,18 @@ fn startup_result(errors: &[StartupError]) -> Result<(), AutumnError> {
 ///
 /// ```rust,no_run
 /// use autumn_plugin_topcoat::TopcoatPlugin;
-/// use topcoat::router::Router;
+/// use topcoat::router::{Router, page};
+/// use topcoat::view::{View, view};
+///
+/// #[page("/")]
+/// async fn home() -> topcoat::Result<impl View> {
+///     Ok(view! { <h1>"Hello"</h1> })
+/// }
 ///
 /// #[autumn_web::main]
 /// async fn main() {
 ///     autumn_web::app()
-///         .plugin(TopcoatPlugin::new().router(Router::builder()))
+///         .plugin(TopcoatPlugin::new().router(Router::builder().page(home)))
 ///         .run()
 ///         .await;
 /// }
@@ -165,7 +171,8 @@ impl TopcoatPlugin {
         self
     }
 
-    /// Mounts Topcoat under `prefix`, for example `/app`. The default is the root.
+    /// Mounts Topcoat under `prefix`, for example `/app`. The default is the
+    /// root, and `mount_at("/")` is the root too.
     ///
     /// Topcoat gets the full path, so declare the pages under the prefix. The
     /// plugin also serves `/_topcoat/*` for assets and runtime endpoints. An
@@ -178,7 +185,8 @@ impl TopcoatPlugin {
     /// Makes Autumn answer 404 for paths under `prefix`, for example `/api`.
     ///
     /// Topcoat does not get these requests, and the CSRF bridge ignores them.
-    /// With a prefix mount, `prefix` must be strictly under the mount.
+    /// With a prefix mount, `prefix` must be strictly under the mount. It must
+    /// not be `/_topcoat` or under it.
     pub fn exclude(mut self, prefix: impl Into<String>) -> Self {
         self.excluded.push(prefix.into());
         self
@@ -187,8 +195,10 @@ impl TopcoatPlugin {
     /// Makes the CSRF bridge treat JSON `POST` requests under `prefix` as
     /// runtime requests.
     ///
-    /// Use it for procedures and shards with a custom path, for example
-    /// `#[procedure("/rpc/double")]`. These requests have no Topcoat header.
+    /// Use it for procedures with a custom path, for example
+    /// `#[procedure("/rpc/double")]`. Procedure calls send no Topcoat header.
+    /// With a prefix mount, `prefix` must be under the mount or under
+    /// `/_topcoat`. It must not be under an excluded prefix.
     pub fn runtime_prefix(mut self, prefix: impl Into<String>) -> Self {
         self.runtime_prefixes.push(prefix.into());
         self

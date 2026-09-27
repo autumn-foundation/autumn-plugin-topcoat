@@ -50,7 +50,7 @@ pub enum PathError {
         ch: char,
     },
     /// The path is in a namespace that Autumn or Topcoat owns.
-    #[error("path {path:?} is reserved by {owner}")]
+    #[error("path {path:?} belongs to {owner}")]
     #[non_exhaustive]
     Reserved {
         /// The refused path.
@@ -113,8 +113,8 @@ pub enum ConfigError {
         /// The excluded prefix.
         prefix: String,
     },
-    /// A runtime prefix is not inside the mount path.
-    #[error("runtime prefix {prefix} must be inside the mount {mount}")]
+    /// A runtime prefix is not inside the mount path or under `/_topcoat`.
+    #[error("runtime prefix {prefix} must be inside the mount {mount} or under /_topcoat")]
     #[non_exhaustive]
     RuntimePrefixOutsideMount {
         /// The runtime prefix.
@@ -233,8 +233,8 @@ pub enum StartupError {
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum AppDataError {
-    /// The page is not served by this plugin.
-    #[error("this render is not served by autumn-plugin-topcoat")]
+    /// This plugin does not serve the page.
+    #[error("autumn-plugin-topcoat does not serve this render")]
     NotMounted,
     /// `AppState` has no extension of this type.
     #[error("AppState has no extension of type {type_name}")]

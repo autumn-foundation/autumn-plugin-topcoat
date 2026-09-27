@@ -59,7 +59,9 @@ pub enum CsrfBridgeStatus {
         /// The CSRF header name, in lowercase.
         header: String,
     },
-    /// The bridge is registered, but Autumn CSRF is off, so it does nothing.
+    /// The plugin registered the bridge layer, but Autumn CSRF is off, so the
+    /// layer changes no request. The layer stays in the stack and adds a small
+    /// cost to each request. Use `CsrfBridge::Off` to remove it.
     InertCsrfDisabled,
     /// The bridge is off. The plugin registered no ingress layer.
     Off,

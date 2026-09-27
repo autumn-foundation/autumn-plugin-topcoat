@@ -3,18 +3,20 @@
 //! # Contract
 //!
 //! - `Origin::parse(s)` returns `Some` if and only if `s` is exactly
-//!   `scheme "://" host [":" port]`: the scheme is `http` or `https` (any
-//!   ASCII case); the host is a non-empty name of ASCII letters, digits, `-`,
-//!   `.`, `_` and `~`, or a bracketed IPv6 address; the port is a decimal
-//!   number from 1 to 65535. There is no user info, path, query or fragment.
-//!   `null` gives `None`.
+//!   `scheme "://" host [":" port]`, with these rules:
+//!   - The scheme is `http` or `https`, in any ASCII case.
+//!   - The host is a non-empty name of ASCII letters, digits, `-`, `.`, `_`
+//!     and `~`, or an IPv6 address in brackets.
+//!   - The port is a decimal number from 1 to 65535 with no leading zero.
+//!   - There is no user info, path, query or fragment. `null` gives `None`.
 //! - The parsed host is in ASCII lowercase. The parsed port is the explicit
 //!   port, or the default port of the scheme (80 or 443).
 //! - `Authority::parse(s)` accepts `host [":" port]` with the same rules.
-//! - `same_origin(o, a, s)` is `true` if and only if the hosts are equal, the
-//!   ports are equal (a missing authority port is the default port of the
-//!   known scheme `s`, else of `o`), and `s` is `None` or equal to the scheme
-//!   of `o`.
+//! - `same_origin(o, a, s)` is `true` if and only if all these are true:
+//!   - The hosts are equal.
+//!   - The ports are equal. A missing authority port is the default port of
+//!     the known scheme `s`, else of `o`.
+//!   - `s` is `None` or equal to the scheme of `o`.
 //! - No function panics.
 
 /// A URL scheme that can make an origin.

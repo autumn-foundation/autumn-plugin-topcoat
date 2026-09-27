@@ -32,9 +32,10 @@ const RESERVED: &[(&str, &str)] = &[
 /// # Contract
 ///
 /// - `new` never panics. It accepts `s` if and only if all these rules are
-///   true: `s` starts with `/`; `s` is not `/`; `s` does not end with `/`;
-///   no segment is empty, `.` or `..`; each character is an ASCII letter, a
-///   digit, `-`, `.`, `_` or `~`.
+///   true:
+///   - `s` starts with `/`, is not `/` and does not end with `/`.
+///   - No segment is empty, `.` or `..`.
+///   - Each character is an ASCII letter, a digit, `-`, `.`, `_` or `~`.
 /// - When `new` refuses `s`, the error is the first failed rule in this order:
 ///   `Empty`, `Root`, `MissingLeadingSlash`, `TrailingSlash`, `EmptySegment`,
 ///   `DotSegment`, `ForbiddenChar`.
@@ -197,7 +198,9 @@ impl MountPath {
         }
     }
 
-    /// Returns `true` if a request with the raw path `path` goes to Topcoat.
+    /// Returns `true` if one of the plugin route templates matches the raw
+    /// path `path`. Autumn routes and excluded prefixes can still take the
+    /// request.
     #[must_use]
     pub fn covers(&self, path: &str) -> bool {
         match &self.0 {

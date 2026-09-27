@@ -2,7 +2,7 @@
 //!
 //! The bridge copies the Autumn CSRF cookie into the CSRF header for
 //! same-origin Topcoat runtime requests. Autumn CSRF then compares the two
-//! values as usual.
+//! values.
 //!
 //! # Contract
 //!
@@ -90,8 +90,8 @@ pub(crate) enum Skip {
 
 /// Returns the value of the only cookie called `name`.
 ///
-/// This is the same algorithm as the Autumn CSRF cookie parser: two cookies
-/// with the same name give `None`, to stop cookie tossing.
+/// This is the same algorithm as the cookie parser of Autumn CSRF. Two
+/// cookies with the same name give `None`, to stop cookie tossing.
 pub(crate) fn single_cookie<'h>(headers: &'h HeaderMap, name: &str) -> Option<&'h str> {
     let mut found = None;
     for header in headers.get_all(http::header::COOKIE) {
@@ -190,10 +190,8 @@ fn is_canonical(path: &str) -> bool {
     path.starts_with('/')
         && !path.contains("//")
         && !path.contains('\\')
-        && !path
-            .as_bytes()
-            .windows(3)
-            .any(|w| w[0] == b'%' && w[1] == b'2' && w[2].eq_ignore_ascii_case(&b'e'))
+        && !path.contains("%2e")
+        && !path.contains("%2E")
         && path
             .split('/')
             .all(|segment| segment != "." && segment != "..")

@@ -54,9 +54,9 @@ pub(crate) fn mount_routes(
 
 /// Returns the `'static` path and the route name for a template.
 ///
-/// `Route` needs `&'static str` paths. The root templates are literals. A
-/// prefix template is leaked once for each plugin build: at most three short
-/// strings for each process.
+/// `Route` needs `&'static str` paths. The root templates are literals. The
+/// plugin leaks each prefix template once for each build. An app builds the
+/// plugin once, so an app leaks three short strings.
 fn path_and_name(template: &str) -> (&'static str, &'static str) {
     match template {
         "/" => ("/", "topcoat_root"),

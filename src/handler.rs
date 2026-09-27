@@ -24,7 +24,7 @@ use crate::tagger::Unmatched;
 /// 2. After a failed startup, the answer is 500. Before the router is ready,
 ///    the answer is 503.
 /// 3. Topcoat gets the original URI, without the copied CSRF header, with
-///    `RemoteAddr` from `ConnectInfo` (port 0 is skipped) and with the
+///    `RemoteAddr` from `ConnectInfo` (the handler skips port 0) and with the
 ///    `ServedByAutumn` marker.
 /// 4. With `NotFoundOwner::Autumn`, an unmatched Topcoat response becomes the
 ///    Autumn fall-through answer. Its `Set-Cookie` headers stay.

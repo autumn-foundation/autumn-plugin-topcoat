@@ -11,12 +11,14 @@
 //!    The string `/` is the root mount.
 //! 3. `InvalidExclude` and `InvalidRuntimePrefix` for each invalid prefix
 //!    string, in input order.
-//! 4. For each valid excluded prefix `e`: `ExcludedOverlapsInternal` when `e`
-//!    is `/_topcoat` or under it; `ExcludedOutsideMount` when the mount is a
-//!    prefix `P` and `e` is not strictly under `P`.
-//! 5. For each valid runtime prefix `r`: `RuntimePrefixOutsideMount` when the
-//!    mount is a prefix `P` and `r` is not `P`, not under `P` and not under
-//!    `/_topcoat`; `RuntimePrefixExcluded` for each excluded prefix that matches `r`.
+//! 4. For each valid excluded prefix `e`:
+//!    - `ExcludedOverlapsInternal` when `e` is `/_topcoat` or under it.
+//!    - `ExcludedOutsideMount` when the mount is a prefix `P` and `e` is not
+//!      strictly under `P`.
+//! 5. For each valid runtime prefix `r`:
+//!    - `RuntimePrefixOutsideMount` when the mount is a prefix `P`, and `r`
+//!      is not `P`, not under `P` and not under `/_topcoat`.
+//!    - `RuntimePrefixExcluded` for each excluded prefix that matches `r`.
 //!
 //! Duplicate prefix strings count once. The root mount never gives an
 //! `*OutsideMount` problem. `register_ingress` is `true` if and only if the

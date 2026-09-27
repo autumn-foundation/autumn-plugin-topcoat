@@ -137,9 +137,10 @@ fn arb_headers() -> impl Strategy<Value = Vec<(&'static str, &'static str)>> {
 proptest! {
     #![proptest_config(ProptestConfig { cases: 128, ..ProptestConfig::default() })]
 
-    /// For non-safe requests without query or form tokens, Autumn CSRF
-    /// admits the request if and only if the bridge injected the token or
-    /// the client sent a header equal to the only CSRF cookie.
+    /// The requests are not safe and have no query or form token. Autumn CSRF
+    /// admits such a request in two cases only:
+    /// - The bridge injected the token.
+    /// - The client sent a header equal to the only CSRF cookie.
     #[test]
     fn bridge_and_autumn_csrf_agree(headers in arb_headers(), plugin_route in any::<bool>()) {
         let matched = if plugin_route { "/{*path}" } else { "/api/things" };
