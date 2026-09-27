@@ -2,17 +2,21 @@
 
 use std::borrow::Cow;
 use std::fmt;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
-use autumn_web::AppState;
 use autumn_web::app::AppBuilder;
 use autumn_web::plugin::Plugin;
+use autumn_web::{AppState, AutumnError};
+use axum::extract::Request;
 use topcoat::router::{Router, RouterBuilder};
 
-use crate::error::StartupError;
-use crate::ingress::IngressSettings;
+use crate::error::{ConfigError, ConfigErrors, StartupError};
+use crate::finalize::finalize;
+use crate::handler::forward;
+use crate::ingress::{IngressLayer, IngressSettings};
 use crate::options::{CspCheck, CsrfBridge, NotFoundOwner};
-use crate::plan::Plan;
+use crate::plan::{Plan, PlanInput, RouterPresence, plan};
+use crate::routes::{any_method, mount_routes};
 
 /// The name that Autumn records for this plugin.
 pub const PLUGIN_NAME: &str = "autumn-plugin-topcoat";
@@ -58,8 +62,8 @@ impl Shared {
 
     /// Keeps the first startup error and logs each error.
     pub(crate) fn record_failure(&self, error: StartupError) {
-        let _ = error;
-        unimplemented!("RED")
+        tracing::error!(target: TRACING_TARGET, %error, "Topcoat plugin startup error");
+        let _ = self.failure.set(error);
     }
 }
 
@@ -218,9 +222,78 @@ impl Plugin for TopcoatPlugin {
     }
 
     fn build(self, app: AppBuilder) -> AppBuilder {
-        let _ = (app, TRACING_TARGET);
-        unimplemented!("RED")
+        let router = match &self.source {
+            None => RouterPresence::Missing,
+            Some(RouterSource::Builder(builder)) if builder.is_empty() => RouterPresence::Empty,
+            Some(RouterSource::Builder(_)) => RouterPresence::Present,
+            Some(RouterSource::Factory(_)) => RouterPresence::Factory,
+        };
+        let planned = plan(&PlanInput {
+            mount: self.mount.as_deref(),
+            excluded: &self.excluded,
+            runtime_prefixes: &self.runtime_prefixes,
+            router,
+            csrf_bridge: self.csrf_bridge,
+        });
+        let (plan, source) = match (planned, self.source) {
+            (Ok(plan), Some(source)) => (plan, source),
+            (Err(errors), _) => return fail(app, StartupError::Config(errors)),
+            (Ok(_), None) => {
+                return fail(
+                    app,
+                    StartupError::Config(ConfigErrors(vec![ConfigError::NoRouter])),
+                );
+            }
+        };
+        let method = match any_method() {
+            Ok(method) => method,
+            Err(error) => {
+                let message = format!("the route method token is not valid: {error}");
+                return fail(app, StartupError::RouterBuild { message });
+            }
+        };
+
+        let shared = Arc::new(Shared::new(plan, self.not_found, self.csp_check));
+        let handler = {
+            let shared = Arc::clone(&shared);
+            axum::routing::any(move |request: Request| {
+                let shared = Arc::clone(&shared);
+                async move { forward(&shared, request).await }
+            })
+        };
+        let routes = mount_routes(&shared.plan.templates, &handler, &method);
+        let register_ingress = shared.plan.register_ingress;
+
+        let init = Arc::clone(&shared);
+        let hook = Arc::clone(&shared);
+        let app = app
+            .routes(routes)
+            .state_initializer(move |state| finalize(&init, source, state))
+            .on_startup(move |_state| {
+                let failure = hook.failure.get().cloned();
+                async move {
+                    failure.map_or(Ok(()), |error| {
+                        Err(AutumnError::internal_server_error_msg(error.to_string()))
+                    })
+                }
+            });
+        if register_ingress {
+            app.layer(IngressLayer::new(shared))
+        } else {
+            app
+        }
     }
+}
+
+/// Logs `error` and registers a startup hook that returns it.
+///
+/// The plugin registers no route and no layer in this case.
+fn fail(app: AppBuilder, error: StartupError) -> AppBuilder {
+    tracing::error!(target: TRACING_TARGET, %error, "Topcoat plugin configuration error");
+    app.on_startup(move |_state| {
+        let message = error.to_string();
+        async move { Err(AutumnError::internal_server_error_msg(message)) }
+    })
 }
 
 #[cfg(test)]

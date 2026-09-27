@@ -23,14 +23,56 @@ pub(crate) fn mount_routes(
     handler: &MethodRouter<AppState>,
     method: &Method,
 ) -> Vec<Route> {
-    let _ = (
-        templates,
-        handler,
-        method,
-        SeoRouteDefaults::EMPTY,
-        ApiDoc::default(),
-    );
-    unimplemented!("RED")
+    templates
+        .iter()
+        .map(|template| {
+            let (path, name) = path_and_name(template);
+            Route {
+                method: method.clone(),
+                path,
+                handler: handler.clone(),
+                name,
+                api_doc: ApiDoc {
+                    method: ANY_METHOD,
+                    path,
+                    operation_id: name,
+                    public: true,
+                    hidden: true,
+                    mcp_exclude: true,
+                    ..ApiDoc::default()
+                },
+                api_version: None,
+                sunset_opt_out: false,
+                repository: None,
+                idempotency: autumn_web::RouteIdempotency::default(),
+                timeout: autumn_web::RouteTimeout::default(),
+                seo: SeoRouteDefaults::EMPTY,
+            }
+        })
+        .collect()
+}
+
+/// Returns the `'static` path and the route name for a template.
+///
+/// `Route` needs `&'static str` paths. The root templates are literals. A
+/// prefix template is leaked once for each plugin build: at most three short
+/// strings for each process.
+fn path_and_name(template: &str) -> (&'static str, &'static str) {
+    match template {
+        "/" => ("/", "topcoat_root"),
+        "/{*path}" => ("/{*path}", "topcoat_catch_all"),
+        "/_topcoat/{*path}" => ("/_topcoat/{*path}", "topcoat_internal"),
+        other => {
+            let name = if other.ends_with("/{*path}") {
+                "topcoat_prefix_catch_all"
+            } else if other.ends_with('/') {
+                "topcoat_prefix_slash"
+            } else {
+                "topcoat_prefix"
+            };
+            (Box::leak(other.to_owned().into_boxed_str()), name)
+        }
+    }
 }
 
 #[cfg(test)]

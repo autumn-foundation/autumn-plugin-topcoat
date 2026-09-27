@@ -1,9 +1,18 @@
 //! The axum handler that forwards requests to Topcoat.
 
-use axum::extract::Request;
-use axum::response::Response;
+use std::net::SocketAddr;
 
+use autumn_web::AutumnError;
+use axum::extract::{ConnectInfo, OriginalUri, Request};
+use axum::response::{IntoResponse, Response};
+use http::header::SET_COOKIE;
+use topcoat::router::{Body, RemoteAddr};
+
+use crate::autumn::ServedByAutumn;
+use crate::fallthrough;
+use crate::options::NotFoundOwner;
 use crate::plugin::Shared;
+use crate::tagger::Unmatched;
 
 /// A request extension: the ingress layer copied the CSRF cookie into this header.
 #[derive(Debug, Clone)]
@@ -23,8 +32,55 @@ pub(crate) struct BridgedToken(pub(crate) http::HeaderName);
 /// 4. With `NotFoundOwner::Autumn`, an unmatched Topcoat response becomes the
 ///    Autumn fall-through answer. Its `Set-Cookie` headers stay.
 pub(crate) async fn forward(shared: &Shared, request: Request) -> Response {
-    let _ = (shared, request);
-    unimplemented!("RED")
+    let mut request = request;
+    if let Some(original) = request.extensions().get::<OriginalUri>() {
+        *request.uri_mut() = original.0.clone();
+    }
+    let method = request.method().clone();
+    let path = request.uri().path().to_owned();
+
+    if shared
+        .plan
+        .excluded
+        .iter()
+        .any(|prefix| prefix.matches(&path))
+    {
+        return fallthrough::respond(&method, &path);
+    }
+    if let Some(error) = shared.failure.get() {
+        return AutumnError::internal_server_error_msg(error.to_string()).into_response();
+    }
+    let Some(router) = shared.router.get() else {
+        return AutumnError::service_unavailable_msg("the Topcoat router is not ready")
+            .into_response();
+    };
+
+    if let Some(BridgedToken(header)) = request.extensions_mut().remove::<BridgedToken>() {
+        request.headers_mut().remove(header);
+    }
+    if request.extensions().get::<RemoteAddr>().is_none() {
+        let peer = request
+            .extensions()
+            .get::<ConnectInfo<SocketAddr>>()
+            .map(|info| info.0)
+            .filter(|addr| addr.port() != 0);
+        if let Some(peer) = peer {
+            request.extensions_mut().insert(RemoteAddr(peer));
+        }
+    }
+    request.extensions_mut().insert(ServedByAutumn);
+
+    let response = router.handle(request.map(Body::new)).await;
+    if shared.not_found == NotFoundOwner::Autumn
+        && response.extensions().get::<Unmatched>().is_some()
+    {
+        let mut fallback = fallthrough::respond(&method, &path);
+        for cookie in response.headers().get_all(SET_COOKIE) {
+            fallback.headers_mut().append(SET_COOKIE, cookie.clone());
+        }
+        return fallback;
+    }
+    response.map(axum::body::Body::new)
 }
 
 #[cfg(test)]

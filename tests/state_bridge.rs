@@ -137,7 +137,7 @@ async fn csrf_token_helper_feeds_plain_forms() {
         .and_then(|rest| rest.split(' ').next())
         .expect("the page shows the token")
         .to_owned();
-    assert!(body.ends_with("header=X-CSRF-Token field=_csrf"), "{body}");
+    assert!(body.ends_with("header=x-csrf-token field=_csrf"), "{body}");
     let cookie = common::set_cookie(&page, "autumn-csrf").expect("Autumn sets the CSRF cookie");
     assert_eq!(cookie, token);
     client

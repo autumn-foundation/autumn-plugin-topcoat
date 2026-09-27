@@ -77,9 +77,10 @@ async fn stream() -> topcoat::Result<Response> {
     })))
 }
 
-#[page("/live")]
-async fn live() -> topcoat::Result<impl View> {
-    Ok(view! { <p>"live"</p> })
+// Not `/live`: that is an Autumn probe path.
+#[page("/interactive")]
+async fn interactive() -> topcoat::Result<impl View> {
+    Ok(view! { <p>"interactive"</p> })
 }
 
 #[page("/big")]
@@ -93,7 +94,7 @@ fn plugin() -> TopcoatPlugin {
         Router::builder()
             .route(addr)
             .route(stream)
-            .page(live)
+            .page(interactive)
             .page(big)
             .runtime(),
     )
@@ -167,7 +168,7 @@ async fn websocket_upgrades_pass_the_autumn_stack() {
         .await
         .unwrap();
     });
-    let mut request = format!("ws://{address}/live")
+    let mut request = format!("ws://{address}/interactive")
         .into_client_request()
         .unwrap();
     request

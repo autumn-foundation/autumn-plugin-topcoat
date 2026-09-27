@@ -1,6 +1,12 @@
 //! Startup diagnostics. Covers AC-19.
 
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, missing_docs)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::await_holding_lock,
+    missing_docs
+)]
 
 mod common;
 
@@ -30,6 +36,7 @@ fn diagnostics(client: &TestClient) -> TopcoatDiagnostics {
 
 #[tokio::test]
 async fn startup_writes_one_info_event_and_stores_the_facts() {
+    let _serial = common::serial();
     let (client, events) = common::capture(|| TestApp::new().plugin(plugin()).build());
     assert_eq!(
         events.count(tracing::Level::INFO),
@@ -49,6 +56,7 @@ async fn startup_writes_one_info_event_and_stores_the_facts() {
 
 #[tokio::test]
 async fn csrf_on_makes_the_bridge_active() {
+    let _serial = common::serial();
     let client = TestApp::new()
         .config(common::csrf_config())
         .plugin(plugin())
@@ -64,6 +72,7 @@ async fn csrf_on_makes_the_bridge_active() {
 
 #[tokio::test]
 async fn idempotency_side_effect_is_reported() {
+    let _serial = common::serial();
     let mut config = common::config();
     config.idempotency.enabled = Some(true);
     let (client, events) = common::capture(|| {
@@ -91,6 +100,7 @@ async fn idempotency_side_effect_is_reported() {
 
 #[tokio::test]
 async fn prefix_mount_is_recorded() {
+    let _serial = common::serial();
     let client = TestApp::new()
         .plugin(
             TopcoatPlugin::new()

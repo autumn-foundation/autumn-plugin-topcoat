@@ -78,7 +78,8 @@ async fn post(client: &TestClient, path: &str, headers: &[(&str, &str)]) -> Test
 
 const JSON: (&str, &str) = ("content-type", "application/json");
 const RERUN: (&str, &str) = ("x-topcoat-runtime", "true");
-const SHARD: (&str, &str) = ("x-topcoat-identity", "unit-1");
+/// A Topcoat identity: 16 bytes in URL-safe base64 without padding.
+const SHARD: (&str, &str) = ("x-topcoat-identity", "AAAAAAAAAAAAAAAAAAAAAA");
 const SAME: (&str, &str) = ("sec-fetch-site", "same-origin");
 const COOKIE: (&str, &str) = ("cookie", "autumn-csrf=tok");
 

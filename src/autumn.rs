@@ -25,8 +25,9 @@ use std::sync::Arc;
 
 use autumn_web::AppState;
 use autumn_web::config::AutumnConfig;
+use autumn_web::security::{CsrfFormField, CsrfToken, CsrfTokenHeader};
 use autumn_web::session::Session;
-use topcoat::context::Cx;
+use topcoat::context::{Cx, try_app_context, try_request_context};
 
 use crate::error::{BridgeError, RequestScopeError};
 
@@ -43,7 +44,7 @@ pub(crate) struct ServedByAutumn;
 pub struct CsrfTokenInfo {
     /// The token value.
     pub token: String,
-    /// The header name for the token, for example `X-CSRF-Token`.
+    /// The header name for the token, in lowercase, for example `x-csrf-token`.
     pub header: String,
     /// The form field name for the token, for example `_csrf`.
     pub field: String,
@@ -55,8 +56,9 @@ pub struct CsrfTokenInfo {
 ///
 /// Returns [`BridgeError::NotMounted`] if this plugin does not serve the render.
 pub fn state(cx: &Cx) -> Result<&AppState, BridgeError> {
-    let _ = cx;
-    unimplemented!("RED")
+    try_app_context::<AutumnApp>(cx)
+        .map(|app| &app.0)
+        .ok_or(BridgeError::NotMounted)
 }
 
 /// Returns the Autumn config. The value is current at the time of the call.
@@ -65,8 +67,7 @@ pub fn state(cx: &Cx) -> Result<&AppState, BridgeError> {
 ///
 /// Returns [`BridgeError::NotMounted`] if this plugin does not serve the render.
 pub fn config(cx: &Cx) -> Result<Arc<AutumnConfig>, BridgeError> {
-    let _ = cx;
-    unimplemented!("RED")
+    Ok(state(cx)?.config_arc())
 }
 
 /// Returns the `AppState` extension of type `T`.
@@ -76,8 +77,11 @@ pub fn config(cx: &Cx) -> Result<Arc<AutumnConfig>, BridgeError> {
 /// Returns [`BridgeError::NotMounted`] if this plugin does not serve the
 /// render, or [`BridgeError::MissingExtension`] if `AppState` has no `T`.
 pub fn extension<T: Any + Send + Sync>(cx: &Cx) -> Result<Arc<T>, BridgeError> {
-    let _ = cx;
-    unimplemented!("RED")
+    state(cx)?
+        .extension::<T>()
+        .ok_or(BridgeError::MissingExtension {
+            type_name: std::any::type_name::<T>(),
+        })
 }
 
 /// Returns the Autumn CSRF values of this HTTP request.
@@ -90,8 +94,21 @@ pub fn extension<T: Any + Send + Sync>(cx: &Cx) -> Result<Arc<T>, BridgeError> {
 /// Returns [`RequestScopeError::Detached`] in a WebSocket render, or
 /// [`RequestScopeError::Unavailable`] when Autumn CSRF is off.
 pub fn csrf_token(cx: &Cx) -> Result<CsrfTokenInfo, RequestScopeError> {
-    let _ = cx;
-    unimplemented!("RED")
+    let extensions = request_extensions(cx)?;
+    let token = extensions
+        .get::<CsrfToken>()
+        .ok_or(RequestScopeError::Unavailable {
+            what: "the Autumn CSRF token",
+        })?;
+    Ok(CsrfTokenInfo {
+        token: token.token().to_owned(),
+        header: extensions
+            .get::<CsrfTokenHeader>()
+            .map_or_else(|| "x-csrf-token".to_owned(), |header| header.0.clone()),
+        field: extensions
+            .get::<CsrfFormField>()
+            .map_or_else(|| "_csrf".to_owned(), |field| field.0.clone()),
+    })
 }
 
 /// Returns the Autumn session of this HTTP request.
@@ -104,8 +121,20 @@ pub fn csrf_token(cx: &Cx) -> Result<CsrfTokenInfo, RequestScopeError> {
 /// Returns [`RequestScopeError::Detached`] in a WebSocket render, or
 /// [`RequestScopeError::Unavailable`] when the request has no session.
 pub fn session(cx: &Cx) -> Result<Session, RequestScopeError> {
-    let _ = cx;
-    unimplemented!("RED")
+    request_extensions(cx)?
+        .get::<Session>()
+        .cloned()
+        .ok_or(RequestScopeError::Unavailable {
+            what: "the Autumn session",
+        })
+}
+
+/// Returns the request extensions of a render that this plugin forwarded.
+fn request_extensions(cx: &Cx) -> Result<&http::Extensions, RequestScopeError> {
+    try_request_context::<http::request::Parts>(cx)
+        .map(|parts| &parts.extensions)
+        .filter(|extensions| extensions.get::<ServedByAutumn>().is_some())
+        .ok_or(RequestScopeError::Detached)
 }
 
 #[cfg(test)]

@@ -126,6 +126,17 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Capture {
     }
 }
 
+/// Serializes the tests of one binary.
+///
+/// `tracing` caches the interest of each callsite for all threads. A test on
+/// another thread can make that cache miss the events of a capture, so the
+/// tests that capture events hold this lock, and so do their neighbors.
+pub fn serial() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: Mutex<()> = Mutex::new(());
+    LOCK.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 /// Runs `f` with a subscriber that captures the plugin events on this thread.
 pub fn capture<T>(f: impl FnOnce() -> T) -> (T, Events) {
     use tracing_subscriber::layer::SubscriberExt;

@@ -1,6 +1,12 @@
 //! The CSP check at startup. Covers AC-15.
 
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, missing_docs)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::await_holding_lock,
+    missing_docs
+)]
 
 mod common;
 
@@ -41,6 +47,7 @@ async fn assert_header_agrees(client: &TestClient) {
 
 #[tokio::test]
 async fn default_policy_is_reported_with_a_fix() {
+    let _serial = common::serial();
     let (client, events) = common::capture(|| client(common::config(), plugin()));
     let stored = diagnostics(&client);
     let report = stored.csp.clone().unwrap();
@@ -66,6 +73,7 @@ async fn default_policy_is_reported_with_a_fix() {
 
 #[tokio::test]
 async fn recommended_policy_is_clean() {
+    let _serial = common::serial();
     let mut config = common::config();
     config.security.headers.content_security_policy = recommended_csp();
     let client = client(config, plugin());
@@ -77,6 +85,7 @@ async fn recommended_policy_is_clean() {
 
 #[tokio::test]
 async fn nonce_policy_neutralizes_inline_scripts() {
+    let _serial = common::serial();
     let mut config = common::config();
     config.security.headers.csp_nonce.enabled = true;
     let client = client(config, plugin());
@@ -94,6 +103,7 @@ async fn nonce_policy_neutralizes_inline_scripts() {
 
 #[tokio::test]
 async fn custom_and_empty_policies_agree_with_the_header() {
+    let _serial = common::serial();
     for policy in [
         "default-src 'self'",
         "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
@@ -115,6 +125,7 @@ async fn custom_and_empty_policies_agree_with_the_header() {
 
 #[tokio::test]
 async fn deny_stops_the_startup() {
+    let _serial = common::serial();
     let app = TestApp::new()
         .config(common::config())
         .plugin(plugin().csp_check(CspCheck::Deny));
@@ -125,6 +136,7 @@ async fn deny_stops_the_startup() {
 
 #[tokio::test]
 async fn deny_with_a_clean_policy_starts() {
+    let _serial = common::serial();
     let mut config = common::config();
     config.security.headers.content_security_policy = recommended_csp();
     let client = client(config, plugin().csp_check(CspCheck::Deny));
@@ -133,6 +145,7 @@ async fn deny_with_a_clean_policy_starts() {
 
 #[tokio::test]
 async fn off_skips_the_analysis() {
+    let _serial = common::serial();
     let (client, events) =
         common::capture(|| client(common::config(), plugin().csp_check(CspCheck::Off)));
     assert_eq!(diagnostics(&client).csp, None);

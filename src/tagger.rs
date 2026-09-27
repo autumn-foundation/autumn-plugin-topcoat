@@ -1,7 +1,9 @@
 //! A pathless Topcoat layer that marks requests with no Topcoat route.
 
 use topcoat::context::Cx;
-use topcoat::router::{Body, Layer, LayerFuture, Next, Path};
+use topcoat::router::error::NotFoundError;
+use topcoat::router::response::Response;
+use topcoat::router::{Body, Layer, LayerFuture, Next, Path, StatusCode, try_endpoint};
 
 /// A response extension: Topcoat has no route for the request path.
 #[derive(Debug, Clone, Copy)]
@@ -23,7 +25,16 @@ impl Layer for UnmatchedTagger {
     }
 
     fn handle<'a>(&'a self, cx: &'a Cx, body: Body, next: Next<'a>) -> LayerFuture<'a> {
-        let _ = (cx, body, next);
-        unimplemented!("RED")
+        Box::pin(async move {
+            match next.run(cx, body).await {
+                Err(error) if error.is::<NotFoundError>() && try_endpoint(cx).is_none() => {
+                    let mut response = Response::new(Body::empty());
+                    *response.status_mut() = StatusCode::NOT_FOUND;
+                    response.extensions_mut().insert(Unmatched);
+                    Ok(response)
+                }
+                other => other,
+            }
+        })
     }
 }
