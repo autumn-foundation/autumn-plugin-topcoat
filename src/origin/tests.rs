@@ -74,6 +74,24 @@ fn origin_parse_refuses_invalid_values() {
     }
 }
 
+/// Regression: brackets must hold an IPv6 address, and ports have no leading zero.
+#[test]
+fn brackets_hold_ipv6_and_ports_have_no_leading_zero() {
+    for bad in [
+        "http://[abc]",
+        "http://[.]",
+        "http://[:::::]",
+        "http://[1.2.3.4]",
+        "http://a:0080",
+        "http://a:00",
+    ] {
+        assert_eq!(Origin::parse(bad), None, "{bad:?}");
+    }
+    assert!(Origin::parse("https://[2001:db8::1]:443").is_some());
+    assert!(Origin::parse("http://[::ffff:1.2.3.4]").is_some());
+    assert_eq!(Authority::parse("[abc]:80"), None);
+}
+
 #[test]
 fn authority_parse() {
     assert_eq!(

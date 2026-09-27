@@ -208,3 +208,12 @@ async fn a_second_registration_is_skipped() {
         .build();
     client.get("/").send().await.assert_body_eq("topcoat GET /");
 }
+
+#[tokio::test]
+async fn slash_mount_is_the_root_mount() {
+    let plugin = TopcoatPlugin::new()
+        .mount_at("/")
+        .router(Router::builder().route(topcoat_root));
+    let client = TestApp::new().plugin(plugin).build();
+    client.get("/").send().await.assert_body_eq("topcoat GET /");
+}

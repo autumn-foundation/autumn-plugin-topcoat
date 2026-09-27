@@ -377,6 +377,42 @@ fn skips_with_the_first_failed_rule() {
     }
 }
 
+/// Regression: two `Host` headers fail closed, also with an identity host.
+#[test]
+fn duplicate_host_headers_fail_closed() {
+    let mut fixture = Fixture::rerun();
+    fixture
+        .remove("sec-fetch-site")
+        .set("origin", "http://localhost")
+        .add("host", "evil.example");
+    fixture.identity_host = Some("localhost".into());
+    assert_eq!(fixture.decide(), Decision::Skip(Skip::NotSameOrigin));
+}
+
+/// Regression: a scheme signal that does not parse fails closed.
+#[test]
+fn unparseable_scheme_fails_closed() {
+    let mut fixture = Fixture::rerun();
+    fixture
+        .remove("sec-fetch-site")
+        .set("origin", "http://localhost");
+    fixture.identity_scheme = Some("junk".into());
+    assert_eq!(fixture.decide(), Decision::Skip(Skip::NotSameOrigin));
+}
+
+/// The identity host wins over an internal `Host`.
+#[test]
+fn identity_host_wins_over_an_internal_host() {
+    let mut fixture = Fixture::rerun();
+    fixture
+        .remove("sec-fetch-site")
+        .set("host", "internal")
+        .set("origin", "https://app.example");
+    fixture.identity_host = Some("app.example".into());
+    fixture.identity_scheme = Some("https".into());
+    assert_eq!(fixture.decide(), inject("tok"));
+}
+
 #[test]
 fn custom_token_header_is_respected() {
     let mut fixture = Fixture::rerun();

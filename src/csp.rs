@@ -54,6 +54,11 @@ pub enum CspFinding {
     ModuleBlocked,
     /// The runtime cannot connect to the server.
     ConnectBlocked,
+    /// `sandbox` without `allow-scripts` blocks all scripts.
+    SandboxBlocksScripts,
+    /// `sandbox` without `allow-same-origin` gives the page an opaque origin.
+    /// The CSRF bridge and the Topcoat origin check then refuse runtime requests.
+    SandboxOpaqueOrigin,
 }
 
 /// Why inline scripts are blocked.
@@ -102,6 +107,10 @@ impl std::fmt::Display for CspFinding {
             }
             Self::ModuleBlocked => "same-origin module scripts are blocked",
             Self::ConnectBlocked => "connect-src blocks same-origin connections",
+            Self::SandboxBlocksScripts => "sandbox without allow-scripts blocks all scripts",
+            Self::SandboxOpaqueOrigin => {
+                "sandbox without allow-same-origin gives the page an opaque origin"
+            }
         };
         f.write_str(text)
     }
@@ -142,6 +151,7 @@ pub(crate) enum PatchBlocker {
     StrictDynamic,
     NonceOrHash,
     TrustedTypes,
+    Sandbox,
 }
 
 /// The result of [`patch`].

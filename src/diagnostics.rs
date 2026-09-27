@@ -1,6 +1,7 @@
 //! Startup facts about the plugin.
 
 use crate::csp::CspReport;
+use crate::error::StartupError;
 use crate::options::NotFoundOwner;
 use crate::path::{MountPath, PathPrefix};
 
@@ -39,6 +40,11 @@ pub struct TopcoatDiagnostics {
     pub not_found: NotFoundOwner,
     /// `true` when the ingress layer makes Autumn idempotent replay fail closed.
     pub idempotency_fail_closed: bool,
+    /// `true` when this process serves HTTP. A worker process does not build
+    /// the Topcoat router.
+    pub serves_http: bool,
+    /// The first startup error, or `None` after a good startup.
+    pub startup_error: Option<StartupError>,
 }
 
 /// The state of the CSRF bridge at startup.

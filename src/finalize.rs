@@ -80,6 +80,8 @@ pub(crate) fn finalize(shared: &Shared, source: RouterSource, state: &AppState) 
         csp_suggestion,
         not_found: shared.not_found,
         idempotency_fail_closed,
+        serves_http: true,
+        startup_error: None,
     };
     tracing::info!(
         target: TRACING_TARGET,
@@ -190,6 +192,7 @@ fn blocker_advice(blockers: &[PatchBlocker]) -> String {
             PatchBlocker::StrictDynamic => "'strict-dynamic'",
             PatchBlocker::NonceOrHash => "nonce or hash sources (or security.headers.csp_nonce)",
             PatchBlocker::TrustedTypes => "require-trusted-types-for 'script'",
+            PatchBlocker::Sandbox => "the sandbox directive",
         })
         .collect();
     format!(

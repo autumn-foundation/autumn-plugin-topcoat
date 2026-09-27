@@ -31,6 +31,22 @@ fn root_plan_defaults() {
 }
 
 #[test]
+fn slash_mount_is_the_root_mount() {
+    let plan = plan(&input(Some("/"), &[], &[])).unwrap();
+    assert!(plan.mount.is_root());
+    assert_eq!(plan.templates, vec!["/", "/{*path}"]);
+}
+
+#[test]
+fn slash_prefix_error_names_no_unusable_api() {
+    let excluded = strings(&["/"]);
+    let errors = plan(&input(None, &excluded, &[])).unwrap_err();
+    let text = errors.to_string();
+    assert!(text.contains("cannot be a prefix"), "{text}");
+    assert!(!text.contains("MountPath::root"), "{text}");
+}
+
+#[test]
 fn prefix_plan_with_prefixes() {
     let excluded = strings(&["/app/api", "/app/api"]);
     let runtime = strings(&["/app/rpc", "/_topcoat/runtime/x"]);

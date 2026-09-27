@@ -130,6 +130,86 @@ fn first_directive_wins_and_policies_union() {
     );
 }
 
+/// Regression: `sandbox` blocks scripts or makes an opaque origin.
+#[test]
+fn sandbox_is_analyzed() {
+    let ok = "script-src 'self' 'unsafe-eval' 'unsafe-inline'";
+    assert_eq!(
+        findings(&format!("{ok}; sandbox allow-forms")),
+        vec![
+            CspFinding::SandboxBlocksScripts,
+            CspFinding::SandboxOpaqueOrigin
+        ]
+    );
+    assert_eq!(
+        findings(&format!("{ok}; sandbox allow-scripts")),
+        vec![CspFinding::SandboxOpaqueOrigin]
+    );
+    assert_eq!(
+        findings(&format!("{ok}; sandbox Allow-Scripts allow-same-origin")),
+        vec![]
+    );
+    let patched = patch(&format!("{ok}; sandbox"));
+    assert_eq!(patched.blockers, vec![PatchBlocker::Sandbox]);
+}
+
+/// Regression: an unquoted keyword is not a host source.
+#[test]
+fn unquoted_keywords_are_not_host_sources() {
+    let policy = "script-src self unsafe-inline unsafe-eval; connect-src self";
+    let report = findings(policy);
+    assert!(report.contains(&CspFinding::ModuleBlocked), "{report:?}");
+    assert!(report.contains(&CspFinding::ConnectBlocked), "{report:?}");
+    let patched = patch(policy);
+    assert!(patched.blockers.is_empty());
+    assert!(analyze(&patched.policy).is_clean(), "{}", patched.policy);
+}
+
+/// Regression: `'strict-dynamic'` in `script-src` does not block the patch
+/// when `script-src-elem` governs script elements.
+#[test]
+fn strict_dynamic_in_script_src_does_not_block_with_script_src_elem() {
+    let policy =
+        "script-src 'self' 'strict-dynamic' 'nonce-x'; script-src-elem 'self' 'unsafe-inline'";
+    let patched = patch(policy);
+    assert!(patched.blockers.is_empty(), "{:?}", patched.blockers);
+    assert!(analyze(&patched.policy).is_clean(), "{}", patched.policy);
+}
+
+/// Wildcard and scheme sources.
+#[test]
+fn wildcard_and_scheme_sources() {
+    assert_eq!(
+        findings("script-src * 'unsafe-eval' 'unsafe-inline'"),
+        vec![]
+    );
+    assert_eq!(
+        findings("default-src * 'unsafe-eval' 'unsafe-inline'"),
+        vec![]
+    );
+    assert_eq!(
+        findings("script-src data: 'unsafe-eval' 'unsafe-inline'"),
+        vec![CspFinding::ModuleBlocked]
+    );
+    assert_eq!(
+        findings("connect-src wss:"),
+        vec![CspFinding::ConnectBlocked]
+    );
+}
+
+#[test]
+fn eval_text_names_both_directives() {
+    assert!(CspFinding::EvalBlocked.to_string().contains("default-src"));
+}
+
+/// Regression: Autumn drops a policy that is not a valid header value.
+#[test]
+fn effective_policy_drops_an_invalid_header_value() {
+    let mut headers = HeadersConfig::default();
+    headers.content_security_policy = "default-src 'self';\nscript-src 'self'".into();
+    assert_eq!(effective_policy(&headers), "");
+}
+
 #[test]
 fn patch_fixes_default_and_reports_blockers() {
     let patched = patch(&default_content_security_policy());

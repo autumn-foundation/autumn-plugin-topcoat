@@ -11,7 +11,8 @@ use autumn_web::prelude::*;
 use autumn_web::test::{TestApp, TestClient, TestResponse};
 use topcoat::context::Cx;
 use topcoat::router::error::not_found;
-use topcoat::router::{Body, Layer, LayerFuture, Next, Path, Router, page, route};
+use topcoat::router::response::Response;
+use topcoat::router::{Body, Layer, LayerFuture, Next, Path, Router, page, route, router};
 use topcoat::runtime::RouterBuilderRuntimeExt;
 use topcoat::view::{View, view};
 use tower::ServiceExt;
@@ -24,6 +25,15 @@ async fn hello() -> topcoat::Result<impl View> {
 #[route(GET "/gone")]
 async fn gone() -> topcoat::Result<&'static str> {
     Err(not_found().into())
+}
+
+/// Returns the response of a sub-request for a path with no Topcoat route.
+#[route(GET "/include")]
+async fn include(cx: &Cx) -> topcoat::Result<Response> {
+    let inner = http::Request::get("/missing-fragment")
+        .body(Body::empty())
+        .unwrap();
+    Ok(router(cx).handle(inner).await)
 }
 
 #[get("/autumn")]
@@ -45,8 +55,8 @@ impl Layer for Counter {
     }
 }
 
-fn router() -> topcoat::router::RouterBuilder {
-    Router::builder().page(hello).route(gone)
+fn builder() -> topcoat::router::RouterBuilder {
+    Router::builder().page(hello).route(gone).route(include)
 }
 
 fn client(plugin: TopcoatPlugin) -> TestClient {
@@ -62,7 +72,7 @@ async fn get(client: &TestClient, path: &str, accept: &str) -> TestResponse {
 
 #[tokio::test]
 async fn unmatched_paths_get_the_autumn_404() {
-    let with_plugin = client(TopcoatPlugin::new().router(router()));
+    let with_plugin = client(TopcoatPlugin::new().router(builder()));
     let without_plugin = TestApp::new().routes(routes![autumn_page]).build();
     for accept in ["application/json", "text/html"] {
         let ours = get(&with_plugin, "/nope", accept).await;
@@ -83,7 +93,7 @@ async fn unmatched_paths_get_the_autumn_404() {
 
 #[tokio::test]
 async fn favicon_gets_204_like_autumn() {
-    let client = client(TopcoatPlugin::new().router(router()));
+    let client = client(TopcoatPlugin::new().router(builder()));
     client.get("/favicon.ico").send().await.assert_status(204);
     client.post("/favicon.ico").send().await.assert_status(404);
     let head = http::Request::head("/favicon.ico")
@@ -95,7 +105,7 @@ async fn favicon_gets_204_like_autumn() {
 
 #[tokio::test]
 async fn topcoat_answers_for_matched_endpoints() {
-    let client = client(TopcoatPlugin::new().router(router()));
+    let client = client(TopcoatPlugin::new().router(builder()));
     let page_404 = get(&client, "/gone", "*/*").await;
     page_404
         .assert_status(404)
@@ -111,7 +121,7 @@ async fn topcoat_answers_for_matched_endpoints() {
 
 #[tokio::test]
 async fn an_unknown_path_rerun_ends_as_the_autumn_404() {
-    let client = client(TopcoatPlugin::new().router(router().runtime()));
+    let client = client(TopcoatPlugin::new().router(builder().runtime()));
     client
         .post("/nope")
         .header("x-topcoat-runtime", "true")
@@ -126,7 +136,7 @@ async fn an_unknown_path_rerun_ends_as_the_autumn_404() {
 
 #[tokio::test]
 async fn the_marker_survives_topcoat_compression() {
-    let client = client(TopcoatPlugin::new().router(router()));
+    let client = client(TopcoatPlugin::new().router(builder()));
     client
         .get("/nope")
         .header("accept", "application/json")
@@ -141,7 +151,7 @@ async fn the_marker_survives_topcoat_compression() {
 async fn topcoat_can_own_404() {
     let client = client(
         TopcoatPlugin::new()
-            .router(router())
+            .router(builder())
             .not_found(NotFoundOwner::Topcoat),
     );
     let response = get(&client, "/nope", "application/json").await;
@@ -152,7 +162,7 @@ async fn topcoat_can_own_404() {
 async fn excluded_prefixes_never_reach_topcoat() {
     static CALLS: AtomicUsize = AtomicUsize::new(0);
     let plugin = TopcoatPlugin::new()
-        .router(router().layer(Counter(&CALLS)))
+        .router(builder().layer(Counter(&CALLS)))
         .exclude("/api");
     let client = client(plugin);
     get(&client, "/api/unknown", "application/json")
@@ -164,4 +174,12 @@ async fn excluded_prefixes_never_reach_topcoat() {
         .await
         .assert_status(404);
     assert_eq!(CALLS.load(Ordering::SeqCst), 1, "/apix is not under /api");
+}
+
+/// Regression: a matched route that returns a sub-request response keeps it.
+#[tokio::test]
+async fn sub_request_404_does_not_become_the_autumn_404() {
+    let client = client(TopcoatPlugin::new().router(builder()));
+    let response = get(&client, "/include", "application/json").await;
+    response.assert_status(404).assert_body_eq("not found");
 }
