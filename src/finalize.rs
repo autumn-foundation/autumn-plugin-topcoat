@@ -142,7 +142,10 @@ fn build_router(
     let builder = add_autumn_parts(builder, state, not_found);
     catch_unwind(AssertUnwindSafe(|| builder.build())).map_err(|payload| {
         StartupError::RouterBuild {
-            message: panic_text(payload.as_ref()),
+            message: format!(
+                "RouterBuilder::build panicked: {}",
+                panic_text(payload.as_ref())
+            ),
         }
     })
 }

@@ -49,20 +49,19 @@ A page calls `autumn::csrf_token(cx)` or `autumn::session(cx)` for request data.
 
 The plugin adds one Tower layer. The layer runs after `TrustedProxies` and before the rate limiter and CSRF. The bridge is on by default. When CSRF is off, the layer changes no request. It stays in the stack and adds a small cost to each request. `CsrfBridge::Off` removes the layer.
 
-The layer copies the CSRF cookie value into the CSRF header only when all these rules are true:
+The layer acts only when Autumn CSRF is on. It reads the cookie name and the header name from the Autumn config at startup. It copies the CSRF cookie value into the CSRF header only when all these rules are true:
 
-1. CSRF is on. The layer reads the cookie name and the header name from the Autumn config at startup.
-2. The method is `POST`.
-3. The axum `MatchedPath` is one of the plugin templates.
-4. The path is not under an excluded prefix.
-5. The request has no CSRF header.
-6. The media type is `application/json`.
-7. The request has a runtime marker: `x-topcoat-runtime: true`, an `x-topcoat-identity` header, or a canonical path under `/_topcoat/runtime/` or under a runtime prefix.
-8. The request is same-origin. `Sec-Fetch-Site` is `same-origin`. If that header is absent, the `Origin` fallback applies:
+1. The method is `POST`.
+2. The axum `MatchedPath` is one of the plugin templates.
+3. The path is not under an excluded prefix.
+4. The request has no CSRF header.
+5. The media type is `application/json`.
+6. The request has a runtime marker: `x-topcoat-runtime: true`, an `x-topcoat-identity` header, or a canonical path under `/_topcoat/runtime/` or under a runtime prefix.
+7. The request is same-origin. `Sec-Fetch-Site` is `same-origin`. If that header is absent, the `Origin` fallback applies:
    - The request has one `Origin` and at most one `Host`.
    - The host and port of `Origin` are equal to the expected host and port. The expected authority is the client host that Autumn resolves, else `Host`, else the URI authority.
    - The bridge compares the scheme only when Autumn resolves it, for example from a trusted `X-Forwarded-Proto`. A scheme value that does not parse fails the rule.
-9. The request has exactly one CSRF cookie. Its value is not empty and is a valid header value.
+8. The request has exactly one CSRF cookie. Its value is not empty and is a valid header value.
 
 If one rule is false, the layer does not change the request. Autumn CSRF then makes the decision.
 
@@ -117,9 +116,9 @@ flowchart TD
 
 Double-submit proves one fact: a page of the same origin sent the request. The bridge proves the same fact with evidence from the browser. The browser sets `Sec-Fetch-Site` and `Origin`. Page scripts cannot set these headers. A JSON body causes a CORS preflight for a sender from a different origin.
 
-The CSRF cookie is `SameSite=Lax`. A cross-site `POST` does not send it. The bridge refuses two cookies with the same name. Autumn still compares the values in constant time. With a signing secret, Autumn also checks the HMAC. Thus the security rests on rule 8 and rule 6.
+The CSRF cookie is `SameSite=Lax`. A cross-site `POST` does not send it. The bridge refuses two cookies with the same name. Autumn still compares the values in constant time. With a signing secret, Autumn also checks the HMAC. Thus the security rests on rule 7 (same origin) and rule 5 (JSON).
 
-The bridge acts only on plugin route templates. If `MatchedPath` is missing, the bridge does nothing. An Autumn route that shares a plugin template, for example a host `POST /`, can get a copied header. Rule 8 still applies to it. The host handler keeps the header, and the Topcoat `OriginLayer` does not run for it.
+The bridge acts only on plugin route templates. If `MatchedPath` is missing, the bridge does nothing. An Autumn route that shares a plugin template, for example a host `POST /`, can get a copied header. Rule 7 (same origin) still applies to it. The host handler keeps the header, and the Topcoat `OriginLayer` does not run for it.
 
 The rules are stricter than the Topcoat `OriginLayer`. That layer accepts `Sec-Fetch-Site: none` and requests without `Origin`. The Topcoat `OriginLayer` still runs after Autumn.
 
@@ -173,14 +172,14 @@ A script from the same origin can still send a request. The token method has the
 | AC-9 | `autumn::state`, `autumn::config` and `autumn::extension` work in HTTP renders and in detached renders. They return typed errors when the plugin does not serve the page. |
 | AC-10 | `autumn::csrf_token` and `autumn::session` work in HTTP renders. They return `Detached` in detached renders. Session writes persist. |
 | AC-11 | With CSRF on, the bridge admits same-origin runtime requests: page reruns, shards, default procedures, runtime-prefix procedures and the `Origin` fallback. Custom cookie and header names and a signing secret work. |
-| AC-12 | With CSRF on, Autumn CSRF returns 403 for each hostile case. The cases are: other-site fetch metadata, a bad `Origin`, no origin evidence, bad cookies, non-JSON bodies, no runtime marker, Autumn-owned routes, excluded paths and dot segments. The bridge never replaces a client header. |
+| AC-12 | With CSRF on, Autumn CSRF returns 403 for each hostile case. The cases include other-site fetch metadata, a bad `Origin`, no origin evidence and bad cookies. They also include non-JSON bodies, no runtime marker, Autumn-owned routes, excluded paths and dot segments. The bridge never replaces a client header. |
 | AC-13 | Topcoat never sees the copied header. With CSRF off, the layer does not change requests. `CsrfBridge::Off` registers no layer. The Topcoat `OriginPolicy` stays active. |
 | AC-14 | The bridge decision agrees with an independent model and is monotone under hostile changes. The cookie parser agrees with the Autumn parser. |
 | AC-15 | The CSP analysis runs at startup, writes warnings with a fix and supports `Deny` and `Off`. `recommended_csp` passes the analysis. The analysis of the effective policy agrees with the analysis of the real header. |
 | AC-16 | By default, an unmatched path returns the Autumn 404 and `/favicon.ico` returns 204. A page 404, a 405 and a 308 from Topcoat do not change. `NotFoundOwner::Topcoat` keeps the Topcoat 404. Excluded prefixes return the Autumn 404 without a Topcoat call. A cross-origin request that is not safe gets the Topcoat 403 for an unknown path. |
 | AC-17 | Topcoat `remote_addr` is the TCP peer when `ConnectInfo` is present, and `None` when it is absent. |
 | AC-18 | A streamed response sends its first chunk before the stream ends. A WebSocket upgrade through the full Autumn stack returns 101. With two compressors, a response has one `Content-Encoding`. |
-| AC-19 | With a valid configuration, the startup stores `TopcoatDiagnostics`. It writes one info event after a good startup, and one error event for each startup error. The plugin writes a warning when idempotency becomes fail-closed. |
+| AC-19 | With a valid configuration, the startup stores `TopcoatDiagnostics`. It writes one info event after a good startup, and an error event for each startup error. It writes a configuration error at build time and again at startup. The plugin writes a warning when idempotency becomes fail-closed. |
 | AC-20 | Autumn skips a second registration of the plugin without a panic. The plugin claims no config section. |
 | AC-21 | README, ADR, CHANGELOG, CLAUDE.md and rustdoc exist and use ASD-STE100 style. README snippets compile as doctests. An example host binary exists. |
 | AC-22 | fmt, clippy (pedantic and nursery, `-D warnings`), tests on 1.98.1 and line coverage of production code of 90% or more pass. Production code has no `unwrap`, `expect`, `panic` or `unsafe`. CI runs these checks and the route audit. |

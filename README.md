@@ -38,7 +38,7 @@ The command adds the `autumn-plugin-topcoat` dependency. It prints the line `.pl
 2. Add the printed line to your app.
 3. Give the plugin a router, as in the Quick start: `TopcoatPlugin::new().router(Router::builder().page(home))`.
 
-The printed line alone stops the startup with the error `no Topcoat router is set`. `autumn plugin add` needs an Autumn CLI later than 0.7.0. With the 0.7.0 CLI, use the manual install.
+The printed line alone stops the startup with the error `the plugin has no Topcoat router`. `autumn plugin add` needs an Autumn CLI later than 0.7.0. With the 0.7.0 CLI, use the manual install.
 
 ### Topcoat features
 
@@ -47,7 +47,7 @@ Use the default Topcoat features. The plugin itself needs only the `router` feat
 | Feature | Use |
 |---------|-----|
 | `router` and `view` | Pages. |
-| `runtime` | Interactive pages. |
+| `runtime` | Interactive pages. The runtime script is an asset, so also enable `asset`. |
 | `asset` and `serve` | Serve the asset bundle from the app. Autumn owns the listener, but `AssetConfig` from an `AssetBundle` needs `serve`. Without `serve`, use `AssetConfig::hosted_at`. |
 | `compression` | Streamed HTML in `autumn dev`. See [Development workflow](#development-workflow). |
 
@@ -102,7 +102,7 @@ flowchart LR
     C -->|"no"| E{"Excluded prefix?"}
     E -->|"yes"| F["Autumn 404"]
     E -->|"no"| O{"Topcoat origin check"}
-    O -->|"cross-origin, not safe"| X["Topcoat 403"]
+    O -->|"cross-origin, not GET, HEAD or OPTIONS"| X["Topcoat 403"]
     O -->|"pass"| G{"Topcoat route?"}
     G -->|"yes"| H["Topcoat page"]
     G -->|"no"| F
@@ -123,7 +123,7 @@ The routes are public and have the plugin as their source. Thus `autumn routes a
 
 By default, Autumn answers each path that has no Topcoat route. The answer is the Autumn 404, or 204 for `GET` and `HEAD` of `/favicon.ico`. A Topcoat 404, 405 or 308 from a matched route stays unchanged.
 
-There is one exception. The Topcoat origin check runs before route matching. So a cross-origin `POST`, `PUT` or `DELETE` to an unknown path gets the Topcoat 403. Exclude each prefix that other origins call.
+There is one exception. The Topcoat origin check runs before route matching. So a cross-origin request to an unknown path gets a 403, not the Autumn 404. This applies to each method except `GET`, `HEAD` and `OPTIONS`, and to WebSocket handshakes. With Autumn CSRF on, Autumn CSRF can send its 403 first. Exclude each prefix that other origins call.
 
 Autumn access logs and metrics label an unknown Topcoat path with the plugin route template, not with `_unmatched`.
 
@@ -139,7 +139,7 @@ The module `autumn_plugin_topcoat::autumn` has these functions:
 | `autumn::session(cx)` | The Autumn `Session` | No: `Detached` |
 | `autumn::csrf_token(cx)` | Token, header name, field name | No: `Detached` |
 
-`csrf_token` returns `Unavailable` when Autumn CSRF is off. The dev profile has CSRF off.
+`csrf_token` returns `Unavailable` when Autumn CSRF is off. By default, only the prod profile turns CSRF on.
 
 ```rust,no_run
 use autumn_plugin_topcoat::autumn;
@@ -208,7 +208,7 @@ The plugin reads these Autumn keys at startup:
 
 `TopcoatPlugin::validate` returns each configuration problem. An invalid option also stops the startup with a message for each problem.
 
-With a valid configuration, the plugin stores a `TopcoatDiagnostics` value as an `AppState` extension. After a good startup, it writes one `info` event with the target `autumn_plugin_topcoat`. After a startup error, it writes one `error` event for each error.
+With a valid configuration, the plugin stores a `TopcoatDiagnostics` value as an `AppState` extension. After a good startup, it writes one `info` event with the target `autumn_plugin_topcoat`. After a startup error, it writes an `error` event for each error. It writes a configuration error two times: at build time and at startup.
 
 A startup error stops a server or a task run with a failed startup hook. `autumn build` and `autumn replay` do not run startup hooks, so they only log the error.
 

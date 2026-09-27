@@ -7,8 +7,9 @@ use crate::path::{MountPath, PathPrefix};
 
 /// What the plugin did at startup.
 ///
-/// The plugin writes these facts as one `info` event with the target
-/// `autumn_plugin_topcoat`. It also stores them as an `AppState` extension:
+/// With a valid configuration, the plugin stores these facts as an `AppState`
+/// extension. After a good startup, it also writes the main facts as one
+/// `info` event with the target `autumn_plugin_topcoat`.
 ///
 /// ```rust,no_run
 /// # fn show(state: &autumn_web::AppState) {

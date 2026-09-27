@@ -32,7 +32,10 @@ fn startup_panic(plugin: TopcoatPlugin) -> String {
 async fn no_router_stops_the_startup() {
     let _serial = common::serial();
     let panic = startup_panic(TopcoatPlugin::new());
-    assert!(panic.contains("no Topcoat router is set"), "{panic}");
+    assert!(
+        panic.contains("the plugin has no Topcoat router"),
+        "{panic}"
+    );
 }
 
 #[tokio::test]

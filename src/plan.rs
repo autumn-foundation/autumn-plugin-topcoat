@@ -5,8 +5,8 @@
 //! `plan(input)` returns `Ok` if and only if the input has no problem. Else it
 //! returns each problem once, in this order:
 //!
-//! 1. `NoRouter` when no router is set, `EmptyRouter` when the builder has no
-//!    routes.
+//! 1. `NoRouter` when the plugin has no router, `EmptyRouter` when the builder
+//!    has no routes.
 //! 2. `InvalidMount` when the mount string is not a valid [`MountPath`].
 //!    The string `/` is the root mount.
 //! 3. `InvalidExclude` and `InvalidRuntimePrefix` for each invalid prefix
@@ -31,11 +31,11 @@ use crate::path::{MountPath, PathPrefix};
 /// What the plugin knows about the router when it builds the plan.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RouterPresence {
-    /// No router is set.
+    /// The plugin has no router.
     Missing,
-    /// A builder with no routes is set.
+    /// The plugin has a builder with no routes.
     Empty,
-    /// A builder with routes is set.
+    /// The plugin has a builder with routes.
     Present,
     /// A closure makes the builder at startup.
     Factory,

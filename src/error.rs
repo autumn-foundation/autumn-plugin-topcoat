@@ -64,8 +64,10 @@ pub enum PathError {
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ConfigError {
-    /// No Topcoat router is set.
-    #[error("no Topcoat router is set; call TopcoatPlugin::router or TopcoatPlugin::router_with")]
+    /// The plugin has no Topcoat router.
+    #[error(
+        "the plugin has no Topcoat router; call TopcoatPlugin::router or TopcoatPlugin::router_with"
+    )]
     NoRouter,
     /// The Topcoat router has no routes.
     #[error("the Topcoat router has no routes")]
@@ -211,8 +213,9 @@ pub enum StartupError {
         /// The error text.
         message: String,
     },
+    /// The plugin cannot build the Topcoat router, for example because
     /// `RouterBuilder::build` panicked.
-    #[error("the Topcoat RouterBuilder::build panicked: {message}")]
+    #[error("the plugin cannot build the Topcoat router: {message}")]
     #[non_exhaustive]
     RouterBuild {
         /// The panic text.

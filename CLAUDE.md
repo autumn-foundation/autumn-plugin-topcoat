@@ -40,6 +40,9 @@ The coverage gate measures production code only. Put unit tests in `src/<module>
 | `path` | pure | `PathPrefix` and `MountPath` |
 | `fallthrough` | pure | Autumn 404 and favicon 204 |
 | `autumn` | public | Helpers for Topcoat pages |
+| `diagnostics` | data | `TopcoatDiagnostics` and `CsrfBridgeStatus` |
+| `error` | data | The public error types |
+| `options` | data | `CsrfBridge`, `CspCheck` and `NotFoundOwner` |
 
 Each pure module has a `# Contract` doc section and property tests. Change the contract first. Then change the tests. Then change the code.
 

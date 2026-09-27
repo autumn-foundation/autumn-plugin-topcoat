@@ -67,7 +67,7 @@ pub enum CspFinding {
     SandboxOpaqueOrigin,
 }
 
-/// Why inline scripts are blocked.
+/// Why the policy blocks inline scripts.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum InlineBlock {

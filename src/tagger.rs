@@ -25,9 +25,10 @@ fn forwarded_by_plugin(cx: &Cx) -> bool {
 ///
 /// # Contract
 ///
-/// - The layer tags a result only when all these conditions are true: the
-///   result is a `NotFoundError`, the request matched no endpoint, and the
-///   forward handler sent the request.
+/// - The layer tags a result only when all these conditions are true:
+///   - The result is a `NotFoundError`.
+///   - The request matched no endpoint.
+///   - The forward handler sent the request.
 /// - A tagged result becomes an empty 404 with the `Unmatched` extension.
 /// - Each other result goes out unchanged: a page 404, a 405, a 308, a
 ///   rewrite, a sub-request of a route and each success.

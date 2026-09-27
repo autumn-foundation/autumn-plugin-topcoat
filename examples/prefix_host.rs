@@ -6,8 +6,9 @@
 //! cargo run --example prefix_host
 //! ```
 //!
-//! Then open `http://localhost:3000/app`. Autumn owns all other paths, and
-//! the host route `/{slug}` does not conflict with the plugin routes.
+//! Then open `http://localhost:3000/app`. Autumn owns all other paths except
+//! `/_topcoat/*`. The host route `/{slug}` does not conflict with the plugin
+//! routes.
 
 use autumn_plugin_topcoat::TopcoatPlugin;
 use autumn_web::prelude::*;
