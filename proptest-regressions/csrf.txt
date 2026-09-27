@@ -1,0 +1,9 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 448d86f624cd28fe2db3e2695d6141d21def5987d6ed0a986ef69bb1e85270b6 # shrinks to values = [], name = "c"
+cc f26b662368909f3c1facaa0ee91ded9d5705bb6186c484710036caf6d6bbbb64 # shrinks to mut f = Fixture { method: POST, matched: Some("/{*path}"), path: "/page", headers: {}, identity_host: None, identity_scheme: None, uri_authority: None, templates: ["/", "/{*path}"], excluded: [], runtime: [], token_header: "x-csrf-token" }
+cc 6b4e0f7c62216d9b34a19b3c5a15d29d08aba1f736ef38ee85fda0d54081b078 # shrinks to mut f = Fixture { method: POST, matched: Some("/{*path}"), path: "/page", headers: {}, identity_host: None, identity_scheme: None, uri_authority: None, templates: ["/", "/{*path}"], excluded: [], runtime: [], token_header: "x-csrf-token" }, which = 0

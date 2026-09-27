@@ -1,0 +1,49 @@
+[package]
+name = "autumn-plugin-topcoat"
+version = "0.1.0"
+edition = "2024"
+# Topcoat 0.9 needs Rust 1.98.
+rust-version = "1.98"
+description = "Autumn plugin: Autumn serves the backend, Topcoat renders the frontend."
+license = "Apache-2.0"
+repository = "https://github.com/autumn-foundation/autumn-plugin-topcoat"
+readme = "README.md"
+keywords = ["autumn", "topcoat", "web", "plugin", "ssr"]
+categories = ["web-programming", "web-programming::http-server"]
+
+[dependencies]
+# No default features: the host app selects the Autumn features.
+autumn-web = { version = ">=0.7, <0.8", default-features = false }
+# `router` only: the host app selects the other Topcoat features.
+topcoat = { version = "0.9", default-features = false, features = ["router"] }
+axum = { version = "0.8", default-features = false, features = ["matched-path", "original-uri"] }
+http = "1"
+thiserror = "2"
+tower = { version = "0.5", default-features = false }
+tracing = "0.1"
+
+[dev-dependencies]
+flate2 = "1"
+http-body-util = "0.1"
+matchit = "=0.8.4"
+proptest = "1"
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
+tokio-tungstenite = "0.29"
+# `asset` is necessary with `runtime` and `view` (Topcoat 0.9 feature bug).
+topcoat = { version = "0.9", default-features = false, features = ["asset", "compression", "discover", "router", "runtime", "view"] }
+tower = { version = "0.5", features = ["util"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["registry"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
