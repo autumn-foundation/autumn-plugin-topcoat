@@ -14,8 +14,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.98.1
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: 1.98.1
           components: rustfmt
       - run: cargo fmt --all -- --check
 
@@ -23,8 +24,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.98.1
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: 1.98.1
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --all-targets --all-features -- -D warnings
@@ -33,7 +35,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.98.1
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.1
       - uses: Swatinem/rust-cache@v2
       # The library must build with only the Topcoat `router` feature.
       - run: cargo check --lib
@@ -47,7 +51,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.98.1
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.1
       - uses: Swatinem/rust-cache@v2
       - name: Dump the routes of the example host
         run: AUTUMN_DUMP_ROUTES=1 cargo run -q --example host > routes.json 2> routes.err
@@ -64,8 +70,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.98.1
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: 1.98.1
           components: llvm-tools-preview
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-llvm-cov
