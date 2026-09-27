@@ -1,5 +1,8 @@
 //! Autumn plugin for Topcoat: Autumn serves the backend, Topcoat renders the frontend.
 
+// Items in private modules use `pub(crate)` to show that they stay in the crate.
+#![allow(clippy::redundant_pub_crate)]
+
 mod csrf;
 mod error;
 mod fallthrough;

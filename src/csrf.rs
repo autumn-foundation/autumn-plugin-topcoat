@@ -30,6 +30,7 @@
 
 use http::{HeaderMap, HeaderName, HeaderValue, Method};
 
+use crate::origin::{Authority, Origin, Scheme, same_origin};
 use crate::path::PathPrefix;
 
 /// The prefix of the default Topcoat shard and procedure endpoints.
@@ -88,20 +89,138 @@ pub(crate) enum Skip {
 /// This is the same algorithm as the Autumn CSRF cookie parser: two cookies
 /// with the same name give `None`, to stop cookie tossing.
 pub(crate) fn single_cookie<'h>(headers: &'h HeaderMap, name: &str) -> Option<&'h str> {
-    let _ = (headers, name);
-    unimplemented!("RED")
+    let mut found = None;
+    for header in headers.get_all(http::header::COOKIE) {
+        let Ok(text) = header.to_str() else {
+            continue;
+        };
+        for pair in text.split(';') {
+            let Some((key, value)) = pair.trim().split_once('=') else {
+                continue;
+            };
+            if key.trim() != name {
+                continue;
+            }
+            if found.is_some() {
+                return None;
+            }
+            found = Some(value.trim());
+        }
+    }
+    found
 }
 
 /// Decides whether the bridge copies the CSRF cookie into the CSRF header.
 pub(crate) fn decide(request: &BridgeRequest<'_>, policy: &BridgePolicy<'_>) -> Decision {
-    let _ = (request, policy);
-    unimplemented!("RED")
+    match check(request, policy) {
+        Ok(value) => Decision::Inject(value),
+        Err(skip) => Decision::Skip(skip),
+    }
+}
+
+/// Applies the rules in order. See the module contract.
+fn check(request: &BridgeRequest<'_>, policy: &BridgePolicy<'_>) -> Result<HeaderValue, Skip> {
+    let headers = request.headers;
+    if request.method != Method::POST {
+        return Err(Skip::NotPost);
+    }
+    let plugin_route = request
+        .matched_path
+        .is_some_and(|matched| policy.templates.iter().any(|t| t == matched));
+    if !plugin_route {
+        return Err(Skip::NotPluginRoute);
+    }
+    if policy.excluded.iter().any(|e| e.matches(request.path)) {
+        return Err(Skip::Excluded);
+    }
+    if headers.contains_key(policy.token_header) {
+        return Err(Skip::TokenPresent);
+    }
+    if !is_json(headers) {
+        return Err(Skip::NotJson);
+    }
+    if !has_runtime_marker(request, policy) {
+        return Err(Skip::NoRuntimeMarker);
+    }
+    if !is_same_origin(request) {
+        return Err(Skip::NotSameOrigin);
+    }
+    single_cookie(headers, policy.cookie_name)
+        .filter(|value| !value.is_empty())
+        .and_then(|value| HeaderValue::from_str(value).ok())
+        .ok_or(Skip::CookieUnusable)
+}
+
+/// Returns the only value of `name`, or `None` for zero or many values.
+fn only<'h>(headers: &'h HeaderMap, name: &str) -> Option<&'h HeaderValue> {
+    let mut values = headers.get_all(name).iter();
+    let first = values.next()?;
+    values.next().is_none().then_some(first)
+}
+
+/// Rule 5: one `Content-Type` with the media type `application/json`.
+fn is_json(headers: &HeaderMap) -> bool {
+    only(headers, http::header::CONTENT_TYPE.as_str())
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(';').next())
+        .is_some_and(|media| media.trim().eq_ignore_ascii_case("application/json"))
+}
+
+/// Rule 6: a runtime header or a canonical runtime path.
+fn has_runtime_marker(request: &BridgeRequest<'_>, policy: &BridgePolicy<'_>) -> bool {
+    let headers = request.headers;
+    let rerun = only(headers, RUNTIME_HEADER).is_some_and(|value| value.as_bytes() == b"true");
+    let shard = only(headers, IDENTITY_HEADER).is_some_and(|value| !value.is_empty());
+    let path = request.path;
+    let runtime_path = is_canonical(path)
+        && (path.starts_with(RUNTIME_PATH_PREFIX)
+            || policy.runtime_prefixes.iter().any(|r| r.matches(path)));
+    rerun || shard || runtime_path
+}
+
+/// Returns `true` if `path` has no empty inner segment, no dot segment, no
+/// encoded dot and no backslash.
+fn is_canonical(path: &str) -> bool {
+    path.starts_with('/')
+        && !path.contains("//")
+        && !path.contains('\\')
+        && !path.to_ascii_lowercase().contains("%2e")
+        && path
+            .split('/')
+            .all(|segment| segment != "." && segment != "..")
+}
+
+/// Rule 7: browser evidence that the request is same-origin.
+fn is_same_origin(request: &BridgeRequest<'_>) -> bool {
+    let headers = request.headers;
+    if headers.contains_key("sec-fetch-site") {
+        return only(headers, "sec-fetch-site")
+            .is_some_and(|value| value.as_bytes() == b"same-origin");
+    }
+    let Some(origin) = only(headers, http::header::ORIGIN.as_str())
+        .and_then(|value| value.to_str().ok())
+        .and_then(Origin::parse)
+    else {
+        return false;
+    };
+    // A present `Host` header wins over the URI authority, even when it is bad.
+    let authority = match request.identity_host {
+        Some(host) => Some(host),
+        None if headers.contains_key(http::header::HOST) => {
+            only(headers, http::header::HOST.as_str()).and_then(|value| value.to_str().ok())
+        }
+        None => request.uri_authority,
+    };
+    let Some(expected) = authority.and_then(Authority::parse) else {
+        return false;
+    };
+    let scheme = request.identity_scheme.and_then(Scheme::parse);
+    same_origin(&origin, &expected, scheme)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::origin::{Authority, Origin, Scheme, same_origin};
     use proptest::prelude::*;
 
     /// A copy of `extract_cookie_token` from autumn-web 0.7.0 `security/csrf.rs`.
@@ -547,14 +666,17 @@ mod tests {
         let sfs = all("sec-fetch-site");
         let same = if sfs.is_empty() {
             let origins = all("origin");
-            let expected = f
-                .identity_host
-                .clone()
-                .or_else(|| {
+            let expected = f.identity_host.clone().map_or_else(
+                || {
                     let hosts = all("host");
-                    (hosts.len() == 1).then(|| String::from_utf8_lossy(&hosts[0]).into_owned())
-                })
-                .or_else(|| f.uri_authority.clone());
+                    if hosts.is_empty() {
+                        f.uri_authority.clone()
+                    } else {
+                        (hosts.len() == 1).then(|| String::from_utf8_lossy(&hosts[0]).into_owned())
+                    }
+                },
+                Some,
+            );
             origins.len() == 1
                 && expected.is_some_and(|e| {
                     let o = Origin::parse(&String::from_utf8_lossy(&origins[0]));

@@ -15,7 +15,7 @@
 //!    prefix `P` and `e` is not strictly under `P`.
 //! 5. For each valid runtime prefix `r`: `RuntimePrefixOutsideMount` when the
 //!    mount is a prefix `P` and `r` is not `P`, not under `P` and not under
-//!    `/_topcoat`; `RuntimePrefixExcluded` when an excluded prefix matches `r`.
+//!    `/_topcoat`; `RuntimePrefixExcluded` for each excluded prefix that matches `r`.
 //!
 //! Duplicate prefix strings count once. The root mount never gives an
 //! `*OutsideMount` problem. `register_ingress` is `true` if and only if the
@@ -60,8 +60,95 @@ pub(crate) struct Plan {
 
 /// Validates the plugin options.
 pub(crate) fn plan(input: &PlanInput<'_>) -> Result<Plan, ConfigErrors> {
-    let _ = (input, ConfigError::NoRouter);
-    unimplemented!("RED")
+    let mut errors = Vec::new();
+    match input.router {
+        RouterPresence::Missing => errors.push(ConfigError::NoRouter),
+        RouterPresence::Empty => errors.push(ConfigError::EmptyRouter),
+        RouterPresence::Present | RouterPresence::Factory => {}
+    }
+
+    let mount = match input.mount.map(MountPath::prefix).transpose() {
+        Ok(mount) => Some(mount.unwrap_or_default()),
+        Err(source) => {
+            errors.push(ConfigError::InvalidMount {
+                input: input.mount.unwrap_or_default().to_owned(),
+                source,
+            });
+            None
+        }
+    };
+
+    let excluded = parse_prefixes(input.excluded, &mut errors, |input, source| {
+        ConfigError::InvalidExclude { input, source }
+    });
+    let runtime_prefixes = parse_prefixes(input.runtime_prefixes, &mut errors, |input, source| {
+        ConfigError::InvalidRuntimePrefix { input, source }
+    });
+
+    let mount_prefix = mount.as_ref().and_then(MountPath::as_prefix);
+    for prefix in &excluded {
+        if prefix.overlaps_internal() {
+            errors.push(ConfigError::ExcludedOverlapsInternal {
+                prefix: prefix.to_string(),
+            });
+        }
+        if let Some(parent) = mount_prefix {
+            if !prefix.is_strictly_under(parent) {
+                errors.push(ConfigError::ExcludedOutsideMount {
+                    prefix: prefix.to_string(),
+                    mount: parent.to_string(),
+                });
+            }
+        }
+    }
+    for prefix in &runtime_prefixes {
+        if let Some(parent) = mount_prefix {
+            if !parent.matches(prefix.as_str()) && !prefix.overlaps_internal() {
+                errors.push(ConfigError::RuntimePrefixOutsideMount {
+                    prefix: prefix.to_string(),
+                    mount: parent.to_string(),
+                });
+            }
+        }
+        for excluded in excluded.iter().filter(|e| e.matches(prefix.as_str())) {
+            errors.push(ConfigError::RuntimePrefixExcluded {
+                prefix: prefix.to_string(),
+                excluded: excluded.to_string(),
+            });
+        }
+    }
+
+    match mount {
+        Some(mount) if errors.is_empty() => Ok(Plan {
+            templates: mount.templates(),
+            mount,
+            excluded,
+            runtime_prefixes,
+            register_ingress: input.csrf_bridge != CsrfBridge::Off,
+        }),
+        _ => Err(ConfigErrors(errors)),
+    }
+}
+
+/// Parses each distinct prefix string once. It records each invalid string.
+fn parse_prefixes(
+    inputs: &[String],
+    errors: &mut Vec<ConfigError>,
+    invalid: impl Fn(String, crate::error::PathError) -> ConfigError,
+) -> Vec<PathPrefix> {
+    let mut seen: Vec<&str> = Vec::new();
+    let mut prefixes = Vec::new();
+    for input in inputs {
+        if seen.contains(&input.as_str()) {
+            continue;
+        }
+        seen.push(input);
+        match PathPrefix::new(input) {
+            Ok(prefix) => prefixes.push(prefix),
+            Err(source) => errors.push(invalid(input.clone(), source)),
+        }
+    }
+    prefixes
 }
 
 #[cfg(test)]

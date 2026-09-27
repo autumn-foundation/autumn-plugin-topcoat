@@ -28,15 +28,21 @@ pub(crate) enum Fallthrough {
 
 /// Classifies a request that Topcoat does not serve.
 pub(crate) fn classify(method: &Method, path: &str) -> Fallthrough {
-    let _ = (method, path, FAVICON_PATH);
-    unimplemented!("RED")
+    if (method == Method::GET || method == Method::HEAD) && path == FAVICON_PATH {
+        Fallthrough::NoContent
+    } else {
+        Fallthrough::NotFound
+    }
 }
 
 /// Returns the Autumn answer for a request that Topcoat does not serve.
 pub(crate) fn respond(method: &Method, path: &str) -> Response {
-    let _ = (method, path, StatusCode::OK);
-    let _ = AutumnError::not_found_msg("").into_response();
-    unimplemented!("RED")
+    match classify(method, path) {
+        Fallthrough::NoContent => StatusCode::NO_CONTENT.into_response(),
+        Fallthrough::NotFound => {
+            AutumnError::not_found_msg(format!("No route matches {path}")).into_response()
+        }
+    }
 }
 
 #[cfg(test)]

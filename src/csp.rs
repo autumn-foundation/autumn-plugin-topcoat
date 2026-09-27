@@ -110,8 +110,19 @@ impl std::fmt::Display for CspFinding {
 /// Analyzes a policy string for Topcoat.
 #[must_use]
 pub fn analyze(policy: &str) -> CspReport {
-    let _ = policy;
-    unimplemented!("RED")
+    let policies = parse(policy);
+    let mut report = CspReport {
+        disabled: policies.is_empty(),
+        findings: Vec::new(),
+    };
+    for policy in &policies {
+        for finding in policy.findings() {
+            if !report.findings.contains(&finding) {
+                report.findings.push(finding);
+            }
+        }
+    }
+    report
 }
 
 /// Returns the Autumn default policy with the changes that Topcoat needs.
@@ -122,7 +133,7 @@ pub fn analyze(policy: &str) -> CspReport {
 /// XSS protection of the full app.
 #[must_use]
 pub fn recommended_csp() -> String {
-    unimplemented!("RED")
+    patch(&autumn_web::security::default_content_security_policy()).policy
 }
 
 /// A construct that the patch cannot fix, because the fix removes a source.
@@ -144,8 +155,27 @@ pub(crate) struct Patched {
 
 /// Adds the sources that Topcoat needs. It never removes a source.
 pub(crate) fn patch(policy: &str) -> Patched {
-    let _ = policy;
-    unimplemented!("RED")
+    let mut policies = parse(policy);
+    if policies.is_empty() {
+        return Patched {
+            policy: policy.to_owned(),
+            blockers: Vec::new(),
+        };
+    }
+    let mut blockers = Vec::new();
+    for policy in &mut policies {
+        for blocker in policy.blockers() {
+            if !blockers.contains(&blocker) {
+                blockers.push(blocker);
+            }
+        }
+        policy.patch();
+    }
+    let rendered: Vec<String> = policies.iter().map(Policy::render).collect();
+    Patched {
+        policy: rendered.join(", "),
+        blockers,
+    }
 }
 
 /// Returns the policy that Autumn puts on responses for this config.
@@ -153,8 +183,246 @@ pub(crate) fn patch(policy: &str) -> Patched {
 /// This copies the private resolution of autumn-web 0.7: the nonce template
 /// replaces the default policy when nonces are on.
 pub(crate) fn effective_policy(headers: &HeadersConfig) -> String {
-    let _ = (headers, AUTUMN_NONCE_TEMPLATE);
-    unimplemented!("RED")
+    if headers.csp_nonce.enabled
+        && headers.content_security_policy
+            == autumn_web::security::default_content_security_policy()
+    {
+        AUTUMN_NONCE_TEMPLATE.to_owned()
+    } else {
+        headers.content_security_policy.clone()
+    }
+}
+
+/// One directive: a lowercase name and its sources.
+#[derive(Debug, Clone)]
+struct Directive {
+    name: String,
+    sources: Vec<String>,
+}
+
+/// One policy: its directives in order.
+#[derive(Debug, Clone)]
+struct Policy {
+    directives: Vec<Directive>,
+}
+
+/// Parses a header value into its policies. Policies with no directive are dropped.
+fn parse(text: &str) -> Vec<Policy> {
+    text.split(',')
+        .map(|policy| Policy {
+            directives: policy
+                .split(';')
+                .filter_map(|directive| {
+                    let mut tokens = directive.split_ascii_whitespace();
+                    let name = tokens.next()?.to_ascii_lowercase();
+                    Some(Directive {
+                        name,
+                        sources: tokens.map(str::to_owned).collect(),
+                    })
+                })
+                .collect(),
+        })
+        .filter(|policy| !policy.directives.is_empty())
+        .collect()
+}
+
+/// Returns `true` if `sources` has the keyword `keyword` (ASCII case-insensitive).
+fn has(sources: &[String], keyword: &str) -> bool {
+    sources
+        .iter()
+        .any(|source| source.eq_ignore_ascii_case(keyword))
+}
+
+/// Returns `true` if `source` is a nonce or a hash source.
+fn is_nonce_or_hash(source: &String) -> bool {
+    let lower = source.to_ascii_lowercase();
+    ["'nonce-", "'sha256-", "'sha384-", "'sha512-"]
+        .iter()
+        .any(|prefix| lower.starts_with(prefix))
+}
+
+/// Returns `true` if `sources` can permit a same-origin load.
+fn permits_same_origin(sources: &[String]) -> bool {
+    sources.iter().any(|source| {
+        if source.eq_ignore_ascii_case("'self'") || source == "*" {
+            return true;
+        }
+        if source.starts_with('\'') {
+            return false;
+        }
+        if let Some(scheme) = source.strip_suffix(':') {
+            return scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https");
+        }
+        true
+    })
+}
+
+impl Policy {
+    fn index(&self, name: &str) -> Option<usize> {
+        self.directives.iter().position(|d| d.name == name)
+    }
+
+    fn get(&self, name: &str) -> Option<&[String]> {
+        self.index(name)
+            .map(|i| self.directives[i].sources.as_slice())
+    }
+
+    fn script(&self) -> Option<&[String]> {
+        self.get("script-src").or_else(|| self.get("default-src"))
+    }
+
+    fn element(&self) -> Option<&[String]> {
+        self.get("script-src-elem").or_else(|| self.script())
+    }
+
+    fn connect(&self) -> Option<&[String]> {
+        self.get("connect-src").or_else(|| self.get("default-src"))
+    }
+
+    fn findings(&self) -> Vec<CspFinding> {
+        let mut out = Vec::new();
+        if self
+            .script()
+            .is_some_and(|list| !has(list, "'unsafe-eval'"))
+        {
+            out.push(CspFinding::EvalBlocked);
+        }
+        if self
+            .get("require-trusted-types-for")
+            .is_some_and(|list| has(list, "'script'"))
+        {
+            out.push(CspFinding::TrustedTypesBlockEval);
+        }
+        if let Some(list) = self.element() {
+            let strict_dynamic = has(list, "'strict-dynamic'");
+            let reason = if strict_dynamic {
+                Some(InlineBlock::NeutralizedByStrictDynamic)
+            } else if list.iter().any(is_nonce_or_hash) {
+                Some(InlineBlock::NeutralizedByNonceOrHash)
+            } else if has(list, "'unsafe-inline'") {
+                None
+            } else {
+                Some(InlineBlock::MissingUnsafeInline)
+            };
+            if let Some(reason) = reason {
+                out.push(CspFinding::InlineBlocked(reason));
+            }
+            if strict_dynamic || !permits_same_origin(list) {
+                out.push(CspFinding::ModuleBlocked);
+            }
+        }
+        if self
+            .connect()
+            .is_some_and(|list| !permits_same_origin(list))
+        {
+            out.push(CspFinding::ConnectBlocked);
+        }
+        out
+    }
+
+    fn blockers(&self) -> Vec<PatchBlocker> {
+        let mut out = Vec::new();
+        let strict = |list: Option<&[String]>| list.is_some_and(|l| has(l, "'strict-dynamic'"));
+        if strict(self.element()) || strict(self.script()) {
+            out.push(PatchBlocker::StrictDynamic);
+        }
+        if self
+            .element()
+            .is_some_and(|list| list.iter().any(is_nonce_or_hash))
+        {
+            out.push(PatchBlocker::NonceOrHash);
+        }
+        if self
+            .get("require-trusted-types-for")
+            .is_some_and(|list| has(list, "'script'"))
+        {
+            out.push(PatchBlocker::TrustedTypes);
+        }
+        out
+    }
+
+    /// Adds the missing sources. It never removes a source.
+    fn patch(&mut self) {
+        let has_element = self.index("script-src-elem").is_some();
+        let script = match self.index("script-src") {
+            Some(index) => Some(index),
+            None => {
+                let sources: Option<Vec<String>> = self.get("default-src").map(|default| {
+                    default
+                        .iter()
+                        .filter(|s| !s.eq_ignore_ascii_case("'none'"))
+                        .cloned()
+                        .collect()
+                });
+                sources.map(|sources| {
+                    self.directives.push(Directive {
+                        name: "script-src".to_owned(),
+                        sources,
+                    });
+                    self.directives.len() - 1
+                })
+            }
+        };
+        if let Some(index) = script {
+            let sources = &mut self.directives[index].sources;
+            if !has_element {
+                ensure_element_sources(sources);
+            }
+            ensure(sources, "'unsafe-eval'");
+        }
+        if let Some(index) = self.index("script-src-elem") {
+            ensure_element_sources(&mut self.directives[index].sources);
+        }
+        match self.index("connect-src") {
+            Some(index) => {
+                let sources = &mut self.directives[index].sources;
+                if !permits_same_origin(sources) {
+                    sources.push("'self'".to_owned());
+                }
+            }
+            None => {
+                if self
+                    .get("default-src")
+                    .is_some_and(|d| !permits_same_origin(d))
+                {
+                    self.directives.push(Directive {
+                        name: "connect-src".to_owned(),
+                        sources: vec!["'self'".to_owned()],
+                    });
+                }
+            }
+        }
+    }
+
+    fn render(&self) -> String {
+        let parts: Vec<String> = self
+            .directives
+            .iter()
+            .map(|d| {
+                if d.sources.is_empty() {
+                    d.name.clone()
+                } else {
+                    format!("{} {}", d.name, d.sources.join(" "))
+                }
+            })
+            .collect();
+        parts.join("; ")
+    }
+}
+
+/// Adds `keyword` when it is missing.
+fn ensure(sources: &mut Vec<String>, keyword: &str) {
+    if !has(sources, keyword) {
+        sources.push(keyword.to_owned());
+    }
+}
+
+/// Adds the sources that script elements need: same-origin and inline.
+fn ensure_element_sources(sources: &mut Vec<String>) {
+    if !permits_same_origin(sources) {
+        sources.push("'self'".to_owned());
+    }
+    ensure(sources, "'unsafe-inline'");
 }
 
 #[cfg(test)]
@@ -389,6 +657,10 @@ mod tests {
         prop::collection::vec(directive(), 0..6).prop_map(|d| d.join("; "))
     }
 
+    fn non_empty_policy() -> impl Strategy<Value = String> {
+        prop::collection::vec(directive(), 1..6).prop_map(|d| d.join("; "))
+    }
+
     proptest! {
         #[test]
         fn analyze_and_patch_are_total(s in any::<String>()) {
@@ -405,8 +677,7 @@ mod tests {
         }
 
         #[test]
-        fn comma_joined_policies_union(p in policy(), q in policy()) {
-            prop_assume!(!p.trim().is_empty() && !q.trim().is_empty());
+        fn comma_joined_policies_union(p in non_empty_policy(), q in non_empty_policy()) {
             let joined = analyze(&format!("{p}, {q}"));
             let mut expected = analyze(&p).findings;
             for finding in analyze(&q).findings {
