@@ -2778,14 +2778,19 @@ version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2f2d2ade409750d9dd4fa69ab474d63baf313497f2b1919e5d63d22dc31fcd7"
 dependencies = [
+ "futures-util",
  "inventory",
  "serde",
+ "tokio",
+ "tokio-tungstenite",
  "topcoat-asset",
  "topcoat-cookie",
  "topcoat-core",
  "topcoat-core-macro",
  "topcoat-font",
  "topcoat-font-macro",
+ "topcoat-icon",
+ "topcoat-icon-macro",
  "topcoat-mail",
  "topcoat-router",
  "topcoat-router-macro",
@@ -2807,6 +2812,7 @@ dependencies = [
  "serde",
  "sha2 0.11.0",
  "thiserror",
+ "tokio",
  "toml",
  "topcoat-core",
  "topcoat-router",
@@ -2906,6 +2912,44 @@ dependencies = [
  "quote",
  "syn 3.0.6",
  "topcoat-font-grammar",
+]
+
+[[package]]
+name = "topcoat-icon"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "750b103f6cf3bfde7ccf3a7d3d48d09832d63af18038acf87798679dd93eb81a"
+dependencies = [
+ "topcoat-core",
+ "topcoat-view",
+ "topcoat-view-macro",
+]
+
+[[package]]
+name = "topcoat-icon-grammar"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c60c69c74204d782bffbb961523aa95c60114094588d03df8cee44ca1c3c505"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "serde_json",
+ "syn 3.0.6",
+ "topcoat-core-grammar",
+ "topcoat-icon",
+]
+
+[[package]]
+name = "topcoat-icon-macro"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "caa01a8ffef2fda82c555b9aa3a2e6ad87ac9f8f300f3212c8b798911a6beaf0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.6",
+ "topcoat-icon-grammar",
 ]
 
 [[package]]
@@ -3038,6 +3082,7 @@ dependencies = [
  "sha2 0.11.0",
  "thiserror",
  "tokio",
+ "topcoat-cookie",
  "topcoat-core",
  "topcoat-router",
  "web-time",

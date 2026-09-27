@@ -32,8 +32,8 @@ proptest = "1"
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
 tokio-tungstenite = "0.29"
-# `asset` is necessary with `runtime` and `view` (Topcoat 0.9 feature bug).
-topcoat = { version = "0.9", default-features = false, features = ["asset", "compression", "discover", "router", "runtime", "view"] }
+# The Topcoat default features: the feature set that most host apps use.
+topcoat = "0.9"
 tower = { version = "0.5", features = ["util"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["registry"] }
 

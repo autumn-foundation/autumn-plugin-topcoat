@@ -1,5 +1,4 @@
-//! Autumn plugin for Topcoat: Autumn serves the backend, Topcoat renders the frontend.
-
+#![doc = include_str!("../README.md")]
 // Items in private modules use `pub(crate)` to show that they stay in the crate.
 #![allow(clippy::redundant_pub_crate)]
 

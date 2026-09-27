@@ -35,8 +35,30 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.98.1
       - uses: Swatinem/rust-cache@v2
+      # The library must build with only the Topcoat `router` feature.
+      - run: cargo check --lib
       - run: cargo test --all-targets --all-features
       - run: cargo test --doc --all-features
+      - run: cargo doc --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+  route-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.1
+      - uses: Swatinem/rust-cache@v2
+      - name: Dump the routes of the example host
+        run: AUTUMN_DUMP_ROUTES=1 cargo run -q --example host > routes.json 2> routes.err
+      - name: Check that the plugin routes are audit-clean
+        run: |
+          if grep -q '\[autumn:omitted-routes\]' routes.err; then
+            echo "Autumn reports omitted routers"; exit 1
+          fi
+          jq -e '[.[] | select(.source == "plugin:autumn-plugin-topcoat")] | length == 2' routes.json
+          jq -e '[.[] | select(.source == "plugin:autumn-plugin-topcoat") | select(.method != "ANY" or .classification != "public")] | length == 0' routes.json
+          jq -e '[.[] | select(.classification == "unclassified")] | length == 0' routes.json
 
   coverage:
     runs-on: ubuntu-latest
@@ -47,4 +69,4 @@ jobs:
           components: llvm-tools-preview
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-llvm-cov
-      - run: cargo llvm-cov --all-features --fail-under-lines 85
+      - run: cargo llvm-cov --all-features --fail-under-lines 90
