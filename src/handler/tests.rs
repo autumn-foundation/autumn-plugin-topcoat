@@ -33,9 +33,12 @@ async fn before_startup_the_answer_is_503() {
 #[tokio::test]
 async fn after_a_failed_startup_the_answer_is_500() {
     let shared = shared();
-    shared.record_failure(StartupError::Factory {
-        message: "boom".into(),
-    });
+    shared
+        .failures
+        .set(vec![StartupError::Factory {
+            message: "boom".into(),
+        }])
+        .unwrap();
     let response = forward(&shared, get("/page")).await;
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
 }

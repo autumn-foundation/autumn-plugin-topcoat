@@ -18,10 +18,14 @@
 //! 6. `NoRuntimeMarker`: the request has one `x-topcoat-runtime: true`, or
 //!    one non-empty `x-topcoat-identity`, or a canonical path under
 //!    `/_topcoat/runtime/` or under a runtime prefix.
-//! 7. `NotSameOrigin`: one `Sec-Fetch-Site` with the value `same-origin`;
-//!    or, when `Sec-Fetch-Site` is absent, one `Origin` that is the origin of
-//!    the expected authority (identity host, else `Host`, else URI
-//!    authority).
+//! 7. `NotSameOrigin`: the request is same-origin.
+//!    - With `Sec-Fetch-Site`, it has one value, and the value is `same-origin`.
+//!    - Without `Sec-Fetch-Site`, the request has one `Origin` and at most
+//!      one `Host`. The `Origin` matches the expected authority.
+//!    - The expected authority is the identity host, else `Host`, else the
+//!      URI authority.
+//!    - A scheme signal that does not parse fails the rule. Without a scheme
+//!      signal, the rule compares only the host and the port.
 //! 8. `CookieUnusable`: [`single_cookie`] finds a non-empty cookie value that
 //!    is a valid header value. Then `v` is that value.
 //!
@@ -203,6 +207,10 @@ fn is_same_origin(request: &BridgeRequest<'_>) -> bool {
     else {
         return false;
     };
+    // Two `Host` headers make the expected origin ambiguous.
+    if headers.get_all(http::header::HOST).iter().nth(1).is_some() {
+        return false;
+    }
     // A present `Host` header wins over the URI authority, even when it is bad.
     let authority = match request.identity_host {
         Some(host) => Some(host),
@@ -214,7 +222,14 @@ fn is_same_origin(request: &BridgeRequest<'_>) -> bool {
     let Some(expected) = authority.and_then(Authority::parse) else {
         return false;
     };
-    let scheme = request.identity_scheme.and_then(Scheme::parse);
+    // A scheme signal that does not parse cannot decide, so it fails closed.
+    let scheme = match request.identity_scheme {
+        Some(raw) => match Scheme::parse(raw) {
+            Some(scheme) => Some(scheme),
+            None => return false,
+        },
+        None => None,
+    };
     same_origin(&origin, &expected, scheme)
 }
 

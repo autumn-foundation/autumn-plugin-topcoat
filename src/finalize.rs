@@ -33,16 +33,24 @@ const DEFAULT_TOKEN_HEADER: &str = "x-csrf-token";
 /// - The router gets `AppState` in its app context, and the tagger when Autumn
 ///   owns 404.
 /// - With `CspCheck::Deny`, a CSP finding is a recorded `CspDenied` error.
-/// - The function stores one `TopcoatDiagnostics` extension and writes one
-///   `info` event.
+/// - A process that serves no HTTP does not call the closure, does not build
+///   the router and does not check the CSP.
+/// - The function records all startup errors once, and writes one `error`
+///   event for each error.
+/// - The function stores one `TopcoatDiagnostics` extension. It writes one
+///   `info` event only after a good startup.
 pub(crate) fn finalize(shared: &Shared, source: RouterSource, state: &AppState) {
     let config = state.config_arc();
+    let serves_http = state.role().serves_http();
+    let mut failures = Vec::new();
 
-    match build_router(source, state, shared.not_found) {
-        Ok(router) => {
-            let _ = shared.router.set(router);
+    if serves_http {
+        match build_router(source, state, shared.not_found) {
+            Ok(router) => {
+                let _ = shared.router.set(router);
+            }
+            Err(error) => failures.push(error),
         }
-        Err(error) => shared.record_failure(error),
     }
 
     let csrf_bridge = if !shared.plan.register_ingress {
@@ -58,7 +66,12 @@ pub(crate) fn finalize(shared: &Shared, source: RouterSource, state: &AppState) 
         CsrfBridgeStatus::InertCsrfDisabled
     };
 
-    let (csp, csp_suggestion) = check_csp(shared, &config);
+    let (csp, csp_suggestion, denied) = if serves_http {
+        check_csp(shared.csp_check, &config)
+    } else {
+        (None, None, None)
+    };
+    failures.extend(denied);
 
     let idempotency_fail_closed =
         shared.plan.register_ingress && config.idempotency.enabled == Some(true);
@@ -80,19 +93,26 @@ pub(crate) fn finalize(shared: &Shared, source: RouterSource, state: &AppState) 
         csp_suggestion,
         not_found: shared.not_found,
         idempotency_fail_closed,
-        serves_http: true,
-        startup_error: None,
+        serves_http,
+        startup_error: failures.first().cloned(),
     };
-    tracing::info!(
-        target: TRACING_TARGET,
-        mount = %diagnostics.mount,
-        templates = ?diagnostics.templates,
-        excluded = ?diagnostics.excluded,
-        csrf_bridge = ?diagnostics.csrf_bridge,
-        csp_findings = ?diagnostics.csp.as_ref().map(|report| &report.findings),
-        not_found = ?diagnostics.not_found,
-        "Topcoat mounted in Autumn"
-    );
+    if failures.is_empty() {
+        tracing::info!(
+            target: TRACING_TARGET,
+            mount = %diagnostics.mount,
+            templates = ?diagnostics.templates,
+            excluded = ?diagnostics.excluded,
+            csrf_bridge = ?diagnostics.csrf_bridge,
+            csp_findings = ?diagnostics.csp.as_ref().map(|report| &report.findings),
+            not_found = ?diagnostics.not_found,
+            serves_http,
+            "Topcoat mounted in Autumn"
+        );
+    }
+    for error in &failures {
+        tracing::error!(target: TRACING_TARGET, %error, "Topcoat failed to start");
+    }
+    let _ = shared.failures.set(failures);
     state.insert_extension(diagnostics);
 }
 
@@ -150,15 +170,19 @@ fn ingress_settings(config: &AutumnConfig) -> Option<IngressSettings> {
     })
 }
 
-/// Runs the CSP check. It writes the warnings and records a `Deny` failure.
-fn check_csp(shared: &Shared, config: &AutumnConfig) -> (Option<CspReport>, Option<String>) {
-    if shared.csp_check == CspCheck::Off {
-        return (None, None);
+/// The result of the CSP check: the report, the suggested policy and the
+/// `Deny` error.
+type CspOutcome = (Option<CspReport>, Option<String>, Option<StartupError>);
+
+/// Runs the CSP check. It writes the warnings and returns a `Deny` error.
+fn check_csp(check: CspCheck, config: &AutumnConfig) -> CspOutcome {
+    if check == CspCheck::Off {
+        return (None, None, None);
     }
     let policy = csp::effective_policy(&config.security.headers);
     let report = csp::analyze(&policy);
     if report.is_clean() {
-        return (Some(report), None);
+        return (Some(report), None, None);
     }
     let patched = csp::patch(&policy);
     let suggestion = patched.blockers.is_empty().then_some(patched.policy);
@@ -174,14 +198,14 @@ fn check_csp(shared: &Shared, config: &AutumnConfig) -> (Option<CspReport>, Opti
             "the Content-Security-Policy blocks Topcoat"
         );
     }
-    if shared.csp_check == CspCheck::Deny {
+    let denied = (check == CspCheck::Deny).then(|| {
         let findings: Vec<String> = report.findings.iter().map(ToString::to_string).collect();
-        shared.record_failure(StartupError::CspDenied {
+        StartupError::CspDenied {
             findings: findings.join(", "),
             advice,
-        });
-    }
-    (Some(report), suggestion)
+        }
+    });
+    (Some(report), suggestion, denied)
 }
 
 /// Returns the advice when the patch cannot fix the policy.

@@ -205,8 +205,10 @@ fn eval_text_names_both_directives() {
 /// Regression: Autumn drops a policy that is not a valid header value.
 #[test]
 fn effective_policy_drops_an_invalid_header_value() {
-    let mut headers = HeadersConfig::default();
-    headers.content_security_policy = "default-src 'self';\nscript-src 'self'".into();
+    let headers = HeadersConfig {
+        content_security_policy: "default-src 'self';\nscript-src 'self'".into(),
+        ..HeadersConfig::default()
+    };
     assert_eq!(effective_policy(&headers), "");
 }
 

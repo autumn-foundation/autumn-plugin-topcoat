@@ -81,11 +81,7 @@ impl Authority {
             let end = value.find(']')?;
             let (host, rest) = value.split_at(end + 1);
             let inner = &host[1..host.len() - 1];
-            if inner.is_empty()
-                || !inner
-                    .chars()
-                    .all(|c| c.is_ascii_hexdigit() || c == ':' || c == '.')
-            {
+            if inner.parse::<std::net::Ipv6Addr>().is_err() {
                 return None;
             }
             (host, rest)
@@ -123,9 +119,9 @@ pub(crate) fn same_origin(origin: &Origin, expected: &Authority, scheme: Option<
         && scheme.is_none_or(|scheme| scheme == origin.scheme)
 }
 
-/// Parses a decimal port from 1 to 65535.
+/// Parses a decimal port from 1 to 65535, with no leading zero.
 fn parse_port(digits: &str) -> Option<u16> {
-    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+    if digits.is_empty() || digits.starts_with('0') || !digits.bytes().all(|b| b.is_ascii_digit()) {
         return None;
     }
     digits.parse::<u16>().ok().filter(|port| *port != 0)

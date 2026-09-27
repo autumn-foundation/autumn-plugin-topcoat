@@ -44,7 +44,7 @@ pub(crate) async fn forward(shared: &Shared, request: Request) -> Response {
     {
         return fallthrough::respond(&method, &path);
     }
-    if let Some(error) = shared.failure.get() {
+    if let Some(error) = shared.startup_errors().first() {
         return AutumnError::internal_server_error_msg(error.to_string()).into_response();
     }
     let Some(router) = shared.router.get() else {

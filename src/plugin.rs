@@ -1,6 +1,7 @@
 //! The `TopcoatPlugin` builder and its `Plugin` implementation.
 
 use std::borrow::Cow;
+use std::error::Error;
 use std::fmt;
 use std::sync::{Arc, OnceLock};
 
@@ -42,8 +43,9 @@ pub(crate) struct Shared {
     pub(crate) csp_check: CspCheck,
     /// The built router. Finalize sets it at startup.
     pub(crate) router: OnceLock<Router>,
-    /// The first startup error.
-    pub(crate) failure: OnceLock<StartupError>,
+    /// The startup errors. Finalize sets them once; the list is empty after
+    /// a good startup.
+    pub(crate) failures: OnceLock<Vec<StartupError>>,
     /// The CSRF bridge settings. Finalize sets them when Autumn CSRF is on.
     pub(crate) ingress: OnceLock<IngressSettings>,
 }
@@ -55,16 +57,36 @@ impl Shared {
             not_found,
             csp_check,
             router: OnceLock::new(),
-            failure: OnceLock::new(),
+            failures: OnceLock::new(),
             ingress: OnceLock::new(),
         }
     }
 
-    /// Keeps the first startup error and logs each error.
-    pub(crate) fn record_failure(&self, error: StartupError) {
-        tracing::error!(target: TRACING_TARGET, %error, "Topcoat plugin startup error");
-        let _ = self.failure.set(error);
+    /// Returns the startup errors, or an empty slice before finalize runs.
+    pub(crate) fn startup_errors(&self) -> &[StartupError] {
+        self.failures.get().map_or(&[], Vec::as_slice)
     }
+}
+
+/// Returns the text of `error` and of each cause, separated by `": "`.
+fn error_chain(error: &(dyn Error + 'static)) -> String {
+    let mut text = error.to_string();
+    let mut cause = error.source();
+    while let Some(next) = cause {
+        text.push_str(": ");
+        text.push_str(&next.to_string());
+        cause = next.source();
+    }
+    text
+}
+
+/// Returns an Autumn error that names each startup error, or `Ok` for none.
+fn startup_result(errors: &[StartupError]) -> Result<(), AutumnError> {
+    if errors.is_empty() {
+        return Ok(());
+    }
+    let messages: Vec<String> = errors.iter().map(ToString::to_string).collect();
+    Err(AutumnError::internal_server_error_msg(messages.join("; ")))
 }
 
 /// Mounts a Topcoat router in an Autumn app.
@@ -126,7 +148,8 @@ impl TopcoatPlugin {
     /// Sets a closure that makes the Topcoat router builder at startup.
     ///
     /// The closure gets the Autumn `AppState`. Use it to read the config or
-    /// to load the Topcoat asset bundle. An error stops the startup.
+    /// to load the Topcoat asset bundle. An error stops the startup. The
+    /// startup error text holds the error and each `source()` cause.
     ///
     /// Autumn runs the state initializers in registration order. Register
     /// this plugin after the plugins whose `AppState` extensions the closure
@@ -134,10 +157,10 @@ impl TopcoatPlugin {
     pub fn router_with<F, E>(mut self, factory: F) -> Self
     where
         F: FnOnce(&AppState) -> Result<RouterBuilder, E> + Send + 'static,
-        E: fmt::Display,
+        E: Into<Box<dyn Error + Send + Sync + 'static>>,
     {
         self.source = Some(RouterSource::Factory(Box::new(move |state| {
-            factory(state).map_err(|error| error.to_string())
+            factory(state).map_err(|error| error_chain(&*error.into()))
         })));
         self
     }
@@ -254,11 +277,11 @@ impl Plugin for TopcoatPlugin {
         let planned = plan(&self.plan_input());
         let (plan, source) = match (planned, self.source) {
             (Ok(plan), Some(source)) => (plan, source),
-            (Err(errors), _) => return fail(app, StartupError::Config(errors)),
+            (Err(errors), _) => return fail(app, &StartupError::Config(errors)),
             (Ok(_), None) => {
                 return fail(
                     app,
-                    StartupError::Config(ConfigErrors(vec![ConfigError::NoRouter])),
+                    &StartupError::Config(ConfigErrors(vec![ConfigError::NoRouter])),
                 );
             }
         };
@@ -266,7 +289,7 @@ impl Plugin for TopcoatPlugin {
             Ok(method) => method,
             Err(error) => {
                 let message = format!("the route method token is not valid: {error}");
-                return fail(app, StartupError::RouterBuild { message });
+                return fail(app, &StartupError::RouterBuild { message });
             }
         };
 
@@ -287,12 +310,8 @@ impl Plugin for TopcoatPlugin {
             .routes(routes)
             .state_initializer(move |state| finalize(&init, source, state))
             .on_startup(move |_state| {
-                let failure = hook.failure.get().cloned();
-                async move {
-                    failure.map_or(Ok(()), |error| {
-                        Err(AutumnError::internal_server_error_msg(error.to_string()))
-                    })
-                }
+                let result = startup_result(hook.startup_errors());
+                async move { result }
             });
         if register_ingress {
             app.layer(IngressLayer::new(shared))
@@ -302,13 +321,20 @@ impl Plugin for TopcoatPlugin {
     }
 }
 
-/// Logs `error` and registers a startup hook that returns it.
+/// Logs `error` at build time and again at startup. Registers a startup hook
+/// that returns it.
 ///
 /// The plugin registers no route and no layer in this case.
-fn fail(app: AppBuilder, error: StartupError) -> AppBuilder {
-    tracing::error!(target: TRACING_TARGET, %error, "Topcoat plugin configuration error");
-    app.on_startup(move |_state| {
-        let message = error.to_string();
+fn fail(app: AppBuilder, error: &StartupError) -> AppBuilder {
+    let message = error.to_string();
+    tracing::error!(target: TRACING_TARGET, error = %message, "Topcoat plugin configuration error");
+    // Autumn can start telemetry after `build`, so the error goes to the log again.
+    let logged = message.clone();
+    app.state_initializer(move |_state| {
+        tracing::error!(target: TRACING_TARGET, error = %logged, "Topcoat plugin configuration error");
+    })
+    .on_startup(move |_state| {
+        let message = message.clone();
         async move { Err(AutumnError::internal_server_error_msg(message)) }
     })
 }

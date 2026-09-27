@@ -9,8 +9,8 @@ pub enum PathError {
     /// The path is empty.
     #[error("path is empty")]
     Empty,
-    /// The path is `/`. Use [`MountPath::root`](crate::MountPath::root) for the root mount.
-    #[error("`/` is not a prefix; use MountPath::root()")]
+    /// The path is `/`, which matches each path.
+    #[error("`/` matches every path and cannot be a prefix")]
     Root,
     /// The path does not start with `/`.
     #[error("path {path:?} must start with '/'")]

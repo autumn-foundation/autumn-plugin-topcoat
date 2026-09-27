@@ -29,8 +29,12 @@
 //!   `'strict-dynamic'` or permits no same-origin script.
 //! - `ConnectBlocked`: `connect-src` (else `default-src`) exists and permits
 //!   no same-origin connection.
-//! - A list permits same-origin loads if it has `'self'`, `*`, a host source
-//!   or a scheme source.
+//! - `SandboxBlocksScripts`: `sandbox` exists and has no `allow-scripts`.
+//! - `SandboxOpaqueOrigin`: `sandbox` exists and has no `allow-same-origin`.
+//! - A list permits same-origin loads if it has `'self'`, `*`, an `http:` or
+//!   `https:` scheme source, or a host source. The check does not compare
+//!   the host with the app host. An unquoted keyword, for example `self`, is
+//!   not a host source.
 //! - [`recommended_csp`] has no findings.
 
 use autumn_web::security::HeadersConfig;
@@ -44,7 +48,8 @@ const AUTUMN_NONCE_TEMPLATE: &str = "default-src 'self'; img-src 'self' data:; s
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CspFinding {
-    /// `script-src` has no `'unsafe-eval'`. The runtime cannot compile expressions.
+    /// `script-src` (or `default-src`) has no `'unsafe-eval'`. The runtime
+    /// cannot compile expressions.
     EvalBlocked,
     /// `require-trusted-types-for 'script'` blocks `new Function`.
     TrustedTypesBlockEval,
@@ -94,7 +99,7 @@ impl CspReport {
 impl std::fmt::Display for CspFinding {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let text = match self {
-            Self::EvalBlocked => "script-src has no 'unsafe-eval'",
+            Self::EvalBlocked => "script-src (or default-src) has no 'unsafe-eval'",
             Self::TrustedTypesBlockEval => "require-trusted-types-for 'script' blocks new Function",
             Self::InlineBlocked(InlineBlock::NeutralizedByStrictDynamic) => {
                 "'strict-dynamic' disables inline scripts"
@@ -190,16 +195,20 @@ pub(crate) fn patch(policy: &str) -> Patched {
 
 /// Returns the policy that Autumn puts on responses for this config.
 ///
-/// This copies the private resolution of autumn-web 0.7: the nonce template
-/// replaces the default policy when nonces are on.
+/// This copies the private resolution of autumn-web 0.7:
+///
+/// - The nonce template replaces the default policy when nonces are on.
+/// - Autumn sends no header for a policy that is not a valid header value.
 pub(crate) fn effective_policy(headers: &HeadersConfig) -> String {
     if headers.csp_nonce.enabled
         && headers.content_security_policy
             == autumn_web::security::default_content_security_policy()
     {
         AUTUMN_NONCE_TEMPLATE.to_owned()
-    } else {
+    } else if http::HeaderValue::from_str(&headers.content_security_policy).is_ok() {
         headers.content_security_policy.clone()
+    } else {
+        String::new()
     }
 }
 
@@ -257,7 +266,7 @@ fn permits_same_origin(sources: &[String]) -> bool {
         if source.eq_ignore_ascii_case("'self'") || source == "*" {
             return true;
         }
-        if source.starts_with('\'') {
+        if source.starts_with('\'') || is_unquoted_keyword(source) {
             return false;
         }
         if let Some(scheme) = source.strip_suffix(':') {
@@ -265,6 +274,23 @@ fn permits_same_origin(sources: &[String]) -> bool {
         }
         true
     })
+}
+
+/// Returns `true` if `source` is a keyword without its quotes, for example
+/// `self`. Browsers read it as a host, so it does not permit the app origin.
+fn is_unquoted_keyword(source: &str) -> bool {
+    const KEYWORDS: [&str; 7] = [
+        "self",
+        "none",
+        "unsafe-inline",
+        "unsafe-eval",
+        "strict-dynamic",
+        "report-sample",
+        "wasm-unsafe-eval",
+    ];
+    KEYWORDS
+        .iter()
+        .any(|keyword| source.eq_ignore_ascii_case(keyword))
 }
 
 impl Policy {
@@ -327,13 +353,23 @@ impl Policy {
         {
             out.push(CspFinding::ConnectBlocked);
         }
+        if let Some(flags) = self.get("sandbox") {
+            if !has(flags, "allow-scripts") {
+                out.push(CspFinding::SandboxBlocksScripts);
+            }
+            if !has(flags, "allow-same-origin") {
+                out.push(CspFinding::SandboxOpaqueOrigin);
+            }
+        }
         out
     }
 
     fn blockers(&self) -> Vec<PatchBlocker> {
         let mut out = Vec::new();
-        let strict = |list: Option<&[String]>| list.is_some_and(|l| has(l, "'strict-dynamic'"));
-        if strict(self.element()) || strict(self.script()) {
+        if self
+            .element()
+            .is_some_and(|list| has(list, "'strict-dynamic'"))
+        {
             out.push(PatchBlocker::StrictDynamic);
         }
         if self
@@ -347,6 +383,12 @@ impl Policy {
             .is_some_and(|list| has(list, "'script'"))
         {
             out.push(PatchBlocker::TrustedTypes);
+        }
+        if self
+            .get("sandbox")
+            .is_some_and(|flags| !has(flags, "allow-scripts") || !has(flags, "allow-same-origin"))
+        {
+            out.push(PatchBlocker::Sandbox);
         }
         out
     }

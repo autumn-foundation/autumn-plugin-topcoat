@@ -8,6 +8,7 @@
 //! 1. `NoRouter` when no router is set, `EmptyRouter` when the builder has no
 //!    routes.
 //! 2. `InvalidMount` when the mount string is not a valid [`MountPath`].
+//!    The string `/` is the root mount.
 //! 3. `InvalidExclude` and `InvalidRuntimePrefix` for each invalid prefix
 //!    string, in input order.
 //! 4. For each valid excluded prefix `e`: `ExcludedOverlapsInternal` when `e`
@@ -67,7 +68,7 @@ pub(crate) fn plan(input: &PlanInput<'_>) -> Result<Plan, ConfigErrors> {
         RouterPresence::Present | RouterPresence::Factory => {}
     }
 
-    let mount = match input.mount.map(MountPath::prefix).transpose() {
+    let mount = match input.mount.map(str::parse::<MountPath>).transpose() {
         Ok(mount) => Some(mount.unwrap_or_default()),
         Err(source) => {
             errors.push(ConfigError::InvalidMount {
