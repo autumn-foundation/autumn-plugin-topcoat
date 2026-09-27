@@ -81,7 +81,7 @@ pub struct CspReport {
 impl CspReport {
     /// Returns `true` if the policy does not block Topcoat.
     #[must_use]
-    pub fn is_clean(&self) -> bool {
+    pub const fn is_clean(&self) -> bool {
         self.findings.is_empty()
     }
 }
@@ -234,7 +234,7 @@ fn has(sources: &[String], keyword: &str) -> bool {
 }
 
 /// Returns `true` if `source` is a nonce or a hash source.
-fn is_nonce_or_hash(source: &String) -> bool {
+fn is_nonce_or_hash(source: &str) -> bool {
     let lower = source.to_ascii_lowercase();
     ["'nonce-", "'sha256-", "'sha384-", "'sha512-"]
         .iter()
@@ -297,7 +297,7 @@ impl Policy {
             let strict_dynamic = has(list, "'strict-dynamic'");
             let reason = if strict_dynamic {
                 Some(InlineBlock::NeutralizedByStrictDynamic)
-            } else if list.iter().any(is_nonce_or_hash) {
+            } else if list.iter().any(|source| is_nonce_or_hash(source)) {
                 Some(InlineBlock::NeutralizedByNonceOrHash)
             } else if has(list, "'unsafe-inline'") {
                 None
@@ -328,7 +328,7 @@ impl Policy {
         }
         if self
             .element()
-            .is_some_and(|list| list.iter().any(is_nonce_or_hash))
+            .is_some_and(|list| list.iter().any(|source| is_nonce_or_hash(source)))
         {
             out.push(PatchBlocker::NonceOrHash);
         }
@@ -341,28 +341,28 @@ impl Policy {
         out
     }
 
+    /// Adds a `script-src` with the `default-src` sources, without `'none'`.
+    /// Returns its index, or `None` when there is no `default-src`.
+    fn copy_default_to_script_src(&mut self) -> Option<usize> {
+        let sources: Vec<String> = self
+            .get("default-src")?
+            .iter()
+            .filter(|s| !s.eq_ignore_ascii_case("'none'"))
+            .cloned()
+            .collect();
+        self.directives.push(Directive {
+            name: "script-src".to_owned(),
+            sources,
+        });
+        Some(self.directives.len() - 1)
+    }
+
     /// Adds the missing sources. It never removes a source.
     fn patch(&mut self) {
         let has_element = self.index("script-src-elem").is_some();
-        let script = match self.index("script-src") {
-            Some(index) => Some(index),
-            None => {
-                let sources: Option<Vec<String>> = self.get("default-src").map(|default| {
-                    default
-                        .iter()
-                        .filter(|s| !s.eq_ignore_ascii_case("'none'"))
-                        .cloned()
-                        .collect()
-                });
-                sources.map(|sources| {
-                    self.directives.push(Directive {
-                        name: "script-src".to_owned(),
-                        sources,
-                    });
-                    self.directives.len() - 1
-                })
-            }
-        };
+        let script = self
+            .index("script-src")
+            .or_else(|| self.copy_default_to_script_src());
         if let Some(index) = script {
             let sources = &mut self.directives[index].sources;
             if !has_element {
@@ -685,7 +685,7 @@ mod tests {
                     expected.push(finding);
                 }
             }
-            let mut got = joined.findings.clone();
+            let mut got = joined.findings;
             got.sort_by_key(|f| format!("{f:?}"));
             expected.sort_by_key(|f| format!("{f:?}"));
             prop_assert_eq!(got, expected);
@@ -697,7 +697,7 @@ mod tests {
             if patched.blockers.is_empty() {
                 prop_assert!(analyze(&patched.policy).is_clean(), "not clean: {}", patched.policy);
             }
-            prop_assert_eq!(patch(&patched.policy).policy, patched.policy.clone());
+            prop_assert_eq!(&patch(&patched.policy).policy, &patched.policy);
             let before: Vec<String> = p.split([';', ',']).flat_map(|d| d.split_whitespace().skip(1).map(str::to_ascii_lowercase).collect::<Vec<_>>()).collect();
             let after = patched.policy.to_ascii_lowercase();
             for token in before {

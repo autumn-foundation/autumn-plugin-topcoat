@@ -2,6 +2,7 @@
 
 #![allow(
     dead_code,
+    clippy::field_reassign_with_default,
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
@@ -14,7 +15,7 @@ use std::sync::{Arc, Mutex};
 use autumn_web::config::AutumnConfig;
 use autumn_web::test::{TestApp, TestClient, TestResponse};
 
-/// A config for the `test` profile, with CSRF off (the TestApp default).
+/// A config for the `test` profile, with CSRF off (the `TestApp` default).
 pub fn config() -> AutumnConfig {
     let mut config = AutumnConfig::default();
     config.profile = Some("test".into());

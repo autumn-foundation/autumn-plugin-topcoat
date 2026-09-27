@@ -79,7 +79,7 @@ pub fn config(cx: &Cx) -> Result<Arc<AutumnConfig>, BridgeError> {
 pub fn extension<T: Any + Send + Sync>(cx: &Cx) -> Result<Arc<T>, BridgeError> {
     state(cx)?
         .extension::<T>()
-        .ok_or(BridgeError::MissingExtension {
+        .ok_or_else(|| BridgeError::MissingExtension {
             type_name: std::any::type_name::<T>(),
         })
 }

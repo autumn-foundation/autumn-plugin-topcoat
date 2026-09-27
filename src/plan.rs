@@ -92,23 +92,24 @@ pub(crate) fn plan(input: &PlanInput<'_>) -> Result<Plan, ConfigErrors> {
                 prefix: prefix.to_string(),
             });
         }
-        if let Some(parent) = mount_prefix {
-            if !prefix.is_strictly_under(parent) {
-                errors.push(ConfigError::ExcludedOutsideMount {
-                    prefix: prefix.to_string(),
-                    mount: parent.to_string(),
-                });
-            }
+        if let Some(parent) = mount_prefix
+            && !prefix.is_strictly_under(parent)
+        {
+            errors.push(ConfigError::ExcludedOutsideMount {
+                prefix: prefix.to_string(),
+                mount: parent.to_string(),
+            });
         }
     }
     for prefix in &runtime_prefixes {
-        if let Some(parent) = mount_prefix {
-            if !parent.matches(prefix.as_str()) && !prefix.overlaps_internal() {
-                errors.push(ConfigError::RuntimePrefixOutsideMount {
-                    prefix: prefix.to_string(),
-                    mount: parent.to_string(),
-                });
-            }
+        if let Some(parent) = mount_prefix
+            && !parent.matches(prefix.as_str())
+            && !prefix.overlaps_internal()
+        {
+            errors.push(ConfigError::RuntimePrefixOutsideMount {
+                prefix: prefix.to_string(),
+                mount: parent.to_string(),
+            });
         }
         for excluded in excluded.iter().filter(|e| e.matches(prefix.as_str())) {
             errors.push(ConfigError::RuntimePrefixExcluded {
@@ -333,7 +334,7 @@ mod tests {
             extra in prefix_string(),
         ) {
             let before = error_set(&plan(&input(mount, &excluded, &[])));
-            let mut more = excluded.clone();
+            let mut more = excluded;
             more.push(extra);
             let after = error_set(&plan(&input(mount, &more, &[])));
             for error in before {

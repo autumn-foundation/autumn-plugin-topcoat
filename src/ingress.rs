@@ -10,8 +10,13 @@ use axum::response::Response;
 use http::HeaderName;
 
 use crate::csrf::{BridgePolicy, BridgeRequest, Decision, decide};
-use crate::handler::BridgedToken;
 use crate::plugin::{Shared, TRACING_TARGET};
+
+/// A request extension: the bridge copied the CSRF cookie into this header.
+///
+/// The forward handler removes the header before Topcoat gets the request.
+#[derive(Debug, Clone)]
+pub(crate) struct BridgedToken(pub(crate) HeaderName);
 
 /// The CSRF names that the bridge uses. Finalize sets them from the Autumn config.
 #[derive(Debug, Clone)]
@@ -204,12 +209,7 @@ mod tests {
         let before = request.headers().clone();
         bridge(&shared(false), &mut request);
         assert_eq!(request.headers(), &before);
-        assert!(
-            request
-                .extensions()
-                .get::<crate::handler::BridgedToken>()
-                .is_none()
-        );
+        assert!(request.extensions().get::<BridgedToken>().is_none());
     }
 
     #[test]
@@ -217,12 +217,7 @@ mod tests {
         let mut request = request("POST", Some("/{*path}"), RERUN);
         bridge(&shared(true), &mut request);
         assert_eq!(request.headers().get("x-csrf-token").unwrap(), "tok");
-        assert!(
-            request
-                .extensions()
-                .get::<crate::handler::BridgedToken>()
-                .is_some()
-        );
+        assert!(request.extensions().get::<BridgedToken>().is_some());
     }
 
     #[test]

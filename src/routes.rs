@@ -15,7 +15,7 @@ pub(crate) fn any_method() -> Result<Method, http::method::InvalidMethod> {
 
 /// Returns one typed route for each template, with the same handler.
 ///
-/// Each route is public, hidden from OpenAPI and excluded from MCP. The
+/// Each route is public, hidden from `OpenAPI` and excluded from `MCP`. The
 /// Autumn duplicate check keys on the method token and the path, so `ANY /`
 /// can share `/` with a host `GET /`.
 pub(crate) fn mount_routes(

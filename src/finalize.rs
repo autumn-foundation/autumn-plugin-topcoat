@@ -101,7 +101,7 @@ fn build_router(
     not_found: NotFoundOwner,
 ) -> Result<Router, StartupError> {
     let builder = match source {
-        RouterSource::Builder(builder) => builder,
+        RouterSource::Builder(builder) => *builder,
         RouterSource::Factory(factory) => match catch_unwind(AssertUnwindSafe(|| factory(state))) {
             Ok(Ok(builder)) => builder,
             Ok(Err(message)) => return Err(StartupError::Factory { message }),

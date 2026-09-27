@@ -219,6 +219,7 @@ fn is_same_origin(request: &BridgeRequest<'_>) -> bool {
 }
 
 #[cfg(test)]
+#[allow(clippy::too_many_lines)]
 mod tests {
     use super::*;
     use proptest::prelude::*;
@@ -336,6 +337,9 @@ mod tests {
         }
     }
 
+    /// A change to a fixture.
+    type Mutation = Box<dyn Fn(&mut Fixture)>;
+
     fn inject(value: &'static str) -> Decision {
         Decision::Inject(HeaderValue::from_static(value))
     }
@@ -417,7 +421,7 @@ mod tests {
 
     #[test]
     fn skips_with_the_first_failed_rule() {
-        let cases: Vec<(Skip, Box<dyn Fn(&mut Fixture)>)> = vec![
+        let cases: Vec<(Skip, Mutation)> = vec![
             (Skip::NotPost, Box::new(|f| f.method = Method::PUT)),
             (Skip::NotPluginRoute, Box::new(|f| f.matched = None)),
             (
@@ -610,27 +614,31 @@ mod tests {
     // ---------- properties ----------
 
     /// An independent model of the rule table.
-    fn model(f: &Fixture) -> Result<String, Skip> {
-        let h = &f.headers;
+    fn model(fixture: &Fixture) -> Result<String, Skip> {
+        let headers = &fixture.headers;
         let all = |name: &str| {
-            h.get_all(name)
+            headers
+                .get_all(name)
                 .iter()
                 .map(|v| v.as_bytes().to_vec())
                 .collect::<Vec<_>>()
         };
-        if f.method != Method::POST {
+        if fixture.method != Method::POST {
             return Err(Skip::NotPost);
         }
-        if !f.matched.as_ref().is_some_and(|m| f.templates.contains(m)) {
+        if !fixture
+            .matched
+            .as_ref()
+            .is_some_and(|m| fixture.templates.contains(m))
+        {
             return Err(Skip::NotPluginRoute);
         }
-        if f.excluded
-            .iter()
-            .any(|e| f.path == e.as_str() || f.path.starts_with(&format!("{}/", e.as_str())))
-        {
+        if fixture.excluded.iter().any(|e| {
+            fixture.path == e.as_str() || fixture.path.starts_with(&format!("{}/", e.as_str()))
+        }) {
             return Err(Skip::Excluded);
         }
-        if h.contains_key(&f.token_header) {
+        if headers.contains_key(&fixture.token_header) {
             return Err(Skip::TokenPresent);
         }
         let ct = all("content-type");
@@ -646,19 +654,20 @@ mod tests {
         }
         let runtime = all(RUNTIME_HEADER);
         let identity = all(IDENTITY_HEADER);
-        let canonical = !f.path.contains("/./")
-            && !f.path.contains("/../")
-            && !f.path.ends_with("/.")
-            && !f.path.ends_with("/..")
-            && !f.path.contains("//")
-            && !f.path.to_ascii_lowercase().contains("%2e")
-            && !f.path.contains('\\');
+        let canonical = !fixture.path.contains("/./")
+            && !fixture.path.contains("/../")
+            && !fixture.path.ends_with("/.")
+            && !fixture.path.ends_with("/..")
+            && !fixture.path.contains("//")
+            && !fixture.path.to_ascii_lowercase().contains("%2e")
+            && !fixture.path.contains('\\');
         let marked = (runtime.len() == 1 && runtime[0] == b"true")
             || (identity.len() == 1 && !identity[0].is_empty())
             || (canonical
-                && (f.path.starts_with(RUNTIME_PATH_PREFIX)
-                    || f.runtime.iter().any(|r| {
-                        f.path == r.as_str() || f.path.starts_with(&format!("{}/", r.as_str()))
+                && (fixture.path.starts_with(RUNTIME_PATH_PREFIX)
+                    || fixture.runtime.iter().any(|r| {
+                        fixture.path == r.as_str()
+                            || fixture.path.starts_with(&format!("{}/", r.as_str()))
                     })));
         if !marked {
             return Err(Skip::NoRuntimeMarker);
@@ -666,11 +675,11 @@ mod tests {
         let sfs = all("sec-fetch-site");
         let same = if sfs.is_empty() {
             let origins = all("origin");
-            let expected = f.identity_host.clone().map_or_else(
+            let expected = fixture.identity_host.clone().map_or_else(
                 || {
                     let hosts = all("host");
                     if hosts.is_empty() {
-                        f.uri_authority.clone()
+                        fixture.uri_authority.clone()
                     } else {
                         (hosts.len() == 1).then(|| String::from_utf8_lossy(&hosts[0]).into_owned())
                     }
@@ -679,10 +688,10 @@ mod tests {
             );
             origins.len() == 1
                 && expected.is_some_and(|e| {
-                    let o = Origin::parse(&String::from_utf8_lossy(&origins[0]));
-                    let a = Authority::parse(&e);
-                    let s = f.identity_scheme.as_deref().and_then(Scheme::parse);
-                    matches!((o, a), (Some(o), Some(a)) if same_origin(&o, &a, s))
+                    let origin = Origin::parse(&String::from_utf8_lossy(&origins[0]));
+                    let authority = Authority::parse(&e);
+                    let scheme = fixture.identity_scheme.as_deref().and_then(Scheme::parse);
+                    matches!((origin, authority), (Some(o), Some(a)) if same_origin(&o, &a, scheme))
                 })
         } else {
             sfs.len() == 1 && sfs[0] == b"same-origin"
@@ -690,7 +699,7 @@ mod tests {
         if !same {
             return Err(Skip::NotSameOrigin);
         }
-        match reference_extract_cookie_token(h, "autumn-csrf") {
+        match reference_extract_cookie_token(headers, "autumn-csrf") {
             Some(v) if !v.is_empty() && HeaderValue::from_str(&v).is_ok() => Ok(v),
             _ => Err(Skip::CookieUnusable),
         }

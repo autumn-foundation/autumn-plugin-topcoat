@@ -10,13 +10,10 @@ use topcoat::router::{Body, RemoteAddr};
 
 use crate::autumn::ServedByAutumn;
 use crate::fallthrough;
+use crate::ingress::BridgedToken;
 use crate::options::NotFoundOwner;
 use crate::plugin::Shared;
 use crate::tagger::Unmatched;
-
-/// A request extension: the ingress layer copied the CSRF cookie into this header.
-#[derive(Debug, Clone)]
-pub(crate) struct BridgedToken(pub(crate) http::HeaderName);
 
 /// Forwards one request to Topcoat.
 ///

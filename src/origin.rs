@@ -26,7 +26,7 @@ pub(crate) enum Scheme {
 
 impl Scheme {
     /// Parses `http` or `https` in any ASCII case.
-    pub(crate) fn parse(value: &str) -> Option<Self> {
+    pub(crate) const fn parse(value: &str) -> Option<Self> {
         if value.eq_ignore_ascii_case("http") {
             Some(Self::Http)
         } else if value.eq_ignore_ascii_case("https") {
@@ -299,7 +299,8 @@ mod tests {
             let port = scheme.default_port();
             let mut text = format!("{name}://{host}");
             if explicit {
-                text.push_str(&format!(":{port}"));
+                use std::fmt::Write;
+                let _ = write!(text, ":{port}");
             }
             if upper {
                 text = text.to_ascii_uppercase();

@@ -30,7 +30,7 @@ pub(crate) type Factory = Box<dyn FnOnce(&AppState) -> Result<RouterBuilder, Str
 /// The Topcoat router that the plugin serves.
 pub(crate) enum RouterSource {
     /// A builder that the user made.
-    Builder(RouterBuilder),
+    Builder(Box<RouterBuilder>),
     /// A closure that makes the builder at startup.
     Factory(Factory),
 }
@@ -49,7 +49,7 @@ pub(crate) struct Shared {
 }
 
 impl Shared {
-    pub(crate) fn new(plan: Plan, not_found: NotFoundOwner, csp_check: CspCheck) -> Self {
+    pub(crate) const fn new(plan: Plan, not_found: NotFoundOwner, csp_check: CspCheck) -> Self {
         Self {
             plan,
             not_found,
@@ -119,7 +119,7 @@ impl TopcoatPlugin {
     /// At startup, the plugin adds the Autumn state to the Topcoat app
     /// context and calls `build()`. Do not call `build()` yourself.
     pub fn router(mut self, builder: RouterBuilder) -> Self {
-        self.source = Some(RouterSource::Builder(builder));
+        self.source = Some(RouterSource::Builder(Box::new(builder)));
         self
     }
 
@@ -222,7 +222,7 @@ impl Plugin for TopcoatPlugin {
     }
 
     fn build(self, app: AppBuilder) -> AppBuilder {
-        let router = match &self.source {
+        let presence = match &self.source {
             None => RouterPresence::Missing,
             Some(RouterSource::Builder(builder)) if builder.is_empty() => RouterPresence::Empty,
             Some(RouterSource::Builder(_)) => RouterPresence::Present,
@@ -232,7 +232,7 @@ impl Plugin for TopcoatPlugin {
             mount: self.mount.as_deref(),
             excluded: &self.excluded,
             runtime_prefixes: &self.runtime_prefixes,
-            router,
+            router: presence,
             csrf_bridge: self.csrf_bridge,
         });
         let (plan, source) = match (planned, self.source) {
