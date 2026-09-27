@@ -20,9 +20,9 @@ mod tagger;
 pub mod autumn;
 pub mod csp;
 
-pub use crate::diagnostics::{BridgeStatus, TopcoatDiagnostics};
+pub use crate::diagnostics::{CsrfBridgeStatus, TopcoatDiagnostics};
 pub use crate::error::{
-    BridgeError, ConfigError, ConfigErrors, PathError, RequestScopeError, StartupError,
+    AppDataError, ConfigError, ConfigErrors, PathError, RequestScopeError, StartupError,
 };
 pub use crate::options::{CspCheck, CsrfBridge, NotFoundOwner};
 pub use crate::path::{INTERNAL_PREFIX, MountPath, PathPrefix};

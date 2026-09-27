@@ -29,7 +29,7 @@ use autumn_web::security::{CsrfFormField, CsrfToken, CsrfTokenHeader};
 use autumn_web::session::Session;
 use topcoat::context::{Cx, try_app_context, try_request_context};
 
-use crate::error::{BridgeError, RequestScopeError};
+use crate::error::{AppDataError, RequestScopeError};
 
 /// The Autumn state in the Topcoat app context.
 #[derive(Clone)]
@@ -40,6 +40,7 @@ pub(crate) struct AutumnApp(pub(crate) AppState);
 pub(crate) struct ServedByAutumn;
 
 /// The Autumn CSRF values for a plain HTML form or a custom `fetch` call.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CsrfTokenInfo {
     /// The token value.
@@ -54,19 +55,19 @@ pub struct CsrfTokenInfo {
 ///
 /// # Errors
 ///
-/// Returns [`BridgeError::NotMounted`] if this plugin does not serve the render.
-pub fn state(cx: &Cx) -> Result<&AppState, BridgeError> {
+/// Returns [`AppDataError::NotMounted`] if this plugin does not serve the render.
+pub fn state(cx: &Cx) -> Result<&AppState, AppDataError> {
     try_app_context::<AutumnApp>(cx)
         .map(|app| &app.0)
-        .ok_or(BridgeError::NotMounted)
+        .ok_or(AppDataError::NotMounted)
 }
 
 /// Returns the Autumn config. The value is current at the time of the call.
 ///
 /// # Errors
 ///
-/// Returns [`BridgeError::NotMounted`] if this plugin does not serve the render.
-pub fn config(cx: &Cx) -> Result<Arc<AutumnConfig>, BridgeError> {
+/// Returns [`AppDataError::NotMounted`] if this plugin does not serve the render.
+pub fn config(cx: &Cx) -> Result<Arc<AutumnConfig>, AppDataError> {
     Ok(state(cx)?.config_arc())
 }
 
@@ -74,12 +75,12 @@ pub fn config(cx: &Cx) -> Result<Arc<AutumnConfig>, BridgeError> {
 ///
 /// # Errors
 ///
-/// Returns [`BridgeError::NotMounted`] if this plugin does not serve the
-/// render, or [`BridgeError::MissingExtension`] if `AppState` has no `T`.
-pub fn extension<T: Any + Send + Sync>(cx: &Cx) -> Result<Arc<T>, BridgeError> {
+/// Returns [`AppDataError::NotMounted`] if this plugin does not serve the
+/// render, or [`AppDataError::MissingExtension`] if `AppState` has no `T`.
+pub fn extension<T: Any + Send + Sync>(cx: &Cx) -> Result<Arc<T>, AppDataError> {
     state(cx)?
         .extension::<T>()
-        .ok_or_else(|| BridgeError::MissingExtension {
+        .ok_or_else(|| AppDataError::MissingExtension {
             type_name: std::any::type_name::<T>(),
         })
 }
@@ -138,50 +139,4 @@ fn request_extensions(cx: &Cx) -> Result<&http::Extensions, RequestScopeError> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use topcoat::context::CxTestBuilder;
-
-    #[test]
-    fn helpers_outside_the_plugin_return_errors() {
-        let cx = CxTestBuilder::new().build();
-        assert!(matches!(state(&cx), Err(BridgeError::NotMounted)));
-        assert!(matches!(config(&cx), Err(BridgeError::NotMounted)));
-        assert!(matches!(extension::<u8>(&cx), Err(BridgeError::NotMounted)));
-        assert_eq!(csrf_token(&cx), Err(RequestScopeError::Detached));
-        assert!(matches!(session(&cx), Err(RequestScopeError::Detached)));
-    }
-
-    #[test]
-    fn helpers_with_state_but_no_request() {
-        let cx = CxTestBuilder::new()
-            .app_context(AutumnApp(AppState::for_test()))
-            .build();
-        assert!(state(&cx).is_ok());
-        assert!(config(&cx).is_ok());
-        assert_eq!(
-            extension::<u8>(&cx).err(),
-            Some(BridgeError::MissingExtension { type_name: "u8" })
-        );
-        assert_eq!(csrf_token(&cx), Err(RequestScopeError::Detached));
-    }
-
-    #[test]
-    fn request_helpers_need_the_marker_and_the_values() {
-        let (mut parts, ()) = http::Request::new(()).into_parts();
-        parts.extensions.insert(ServedByAutumn);
-        let cx = CxTestBuilder::new().request_context(parts).build();
-        assert_eq!(
-            csrf_token(&cx),
-            Err(RequestScopeError::Unavailable {
-                what: "the Autumn CSRF token"
-            })
-        );
-        assert!(matches!(
-            session(&cx),
-            Err(RequestScopeError::Unavailable {
-                what: "the Autumn session"
-            })
-        ));
-    }
-}
+mod tests;

@@ -11,7 +11,7 @@
 mod common;
 
 use autumn_plugin_topcoat::{
-    BridgeStatus, CsrfBridge, MountPath, NotFoundOwner, TopcoatDiagnostics, TopcoatPlugin,
+    CsrfBridge, CsrfBridgeStatus, MountPath, NotFoundOwner, TopcoatDiagnostics, TopcoatPlugin,
 };
 use autumn_web::test::{TestApp, TestClient};
 use topcoat::router::{Router, route};
@@ -49,7 +49,7 @@ async fn startup_writes_one_info_event_and_stores_the_facts() {
     let stored = diagnostics(&client);
     assert_eq!(stored.mount, MountPath::root());
     assert_eq!(stored.templates, vec!["/", "/{*path}"]);
-    assert_eq!(stored.csrf_bridge, BridgeStatus::InertCsrfDisabled);
+    assert_eq!(stored.csrf_bridge, CsrfBridgeStatus::InertCsrfDisabled);
     assert_eq!(stored.not_found, NotFoundOwner::Autumn);
     assert!(!stored.idempotency_fail_closed);
 }
@@ -61,12 +61,13 @@ async fn csrf_on_makes_the_bridge_active() {
         .config(common::csrf_config())
         .plugin(plugin())
         .build();
-    assert_eq!(
-        diagnostics(&client).csrf_bridge,
-        BridgeStatus::Active {
-            cookie: "autumn-csrf".into(),
-            header: "x-csrf-token".into()
-        }
+    assert!(
+        matches!(
+            &diagnostics(&client).csrf_bridge,
+            CsrfBridgeStatus::Active { cookie, header, .. } if cookie == "autumn-csrf" && header == "x-csrf-token"
+        ),
+        "{:?}",
+        diagnostics(&client).csrf_bridge
     );
 }
 

@@ -4,7 +4,7 @@
 
 mod common;
 
-use autumn_plugin_topcoat::{BridgeStatus, CsrfBridge, TopcoatDiagnostics, TopcoatPlugin};
+use autumn_plugin_topcoat::{CsrfBridge, CsrfBridgeStatus, TopcoatDiagnostics, TopcoatPlugin};
 use autumn_web::prelude::*;
 use autumn_web::test::{TestApp, TestClient, TestResponse};
 use topcoat::context::Cx;
@@ -219,12 +219,13 @@ async fn custom_cookie_and_header_names_work() {
     .await;
     assert_eq!(response.status, 200, "{}", response.text());
     let diagnostics = client.state().extension::<TopcoatDiagnostics>().unwrap();
-    assert_eq!(
-        diagnostics.csrf_bridge,
-        BridgeStatus::Active {
-            cookie: "my-csrf".into(),
-            header: "x-my-token".into()
-        }
+    assert!(
+        matches!(
+            &diagnostics.csrf_bridge,
+            CsrfBridgeStatus::Active { cookie, header, .. } if cookie == "my-csrf" && header == "x-my-token"
+        ),
+        "{:?}",
+        diagnostics.csrf_bridge
     );
 }
 
@@ -260,7 +261,7 @@ async fn with_csrf_off_the_bridge_changes_nothing() {
     .await;
     assert_eq!(response.text(), "topcoat token=client");
     let diagnostics = client.state().extension::<TopcoatDiagnostics>().unwrap();
-    assert_eq!(diagnostics.csrf_bridge, BridgeStatus::InertCsrfDisabled);
+    assert_eq!(diagnostics.csrf_bridge, CsrfBridgeStatus::InertCsrfDisabled);
 }
 
 #[tokio::test]
@@ -269,7 +270,7 @@ async fn bridge_off_leaves_runtime_posts_to_autumn_csrf() {
     let response = post(&client, "/page", &[JSON, RERUN, SAME, COOKIE]).await;
     assert_eq!(response.status, 403);
     let diagnostics = client.state().extension::<TopcoatDiagnostics>().unwrap();
-    assert_eq!(diagnostics.csrf_bridge, BridgeStatus::Off);
+    assert_eq!(diagnostics.csrf_bridge, CsrfBridgeStatus::Off);
 }
 
 #[tokio::test]

@@ -13,7 +13,7 @@ use topcoat::router::{Router, RouterBuilder};
 
 use crate::autumn::AutumnApp;
 use crate::csp::{self, CspReport, PatchBlocker};
-use crate::diagnostics::{BridgeStatus, TopcoatDiagnostics};
+use crate::diagnostics::{CsrfBridgeStatus, TopcoatDiagnostics};
 use crate::error::{ConfigError, ConfigErrors, StartupError};
 use crate::ingress::IngressSettings;
 use crate::options::{CspCheck, NotFoundOwner};
@@ -46,16 +46,16 @@ pub(crate) fn finalize(shared: &Shared, source: RouterSource, state: &AppState) 
     }
 
     let csrf_bridge = if !shared.plan.register_ingress {
-        BridgeStatus::Off
+        CsrfBridgeStatus::Off
     } else if let Some(settings) = ingress_settings(&config) {
-        let status = BridgeStatus::Active {
+        let status = CsrfBridgeStatus::Active {
             cookie: settings.cookie_name.clone(),
             header: settings.token_header.as_str().to_owned(),
         };
         let _ = shared.ingress.set(settings);
         status
     } else {
-        BridgeStatus::InertCsrfDisabled
+        CsrfBridgeStatus::InertCsrfDisabled
     };
 
     let (csp, csp_suggestion) = check_csp(shared, &config);
@@ -208,34 +208,4 @@ fn panic_text(payload: &(dyn Any + Send)) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn panic_text_reads_str_and_string_payloads() {
-        let text: Box<dyn Any + Send> = Box::new("static");
-        assert_eq!(panic_text(text.as_ref()), "static");
-        let owned: Box<dyn Any + Send> = Box::new(String::from("owned"));
-        assert_eq!(panic_text(owned.as_ref()), "owned");
-        let other: Box<dyn Any + Send> = Box::new(7_u8);
-        assert_eq!(panic_text(other.as_ref()), "a panic with no text");
-    }
-
-    #[test]
-    fn invalid_token_header_falls_back_like_autumn() {
-        let mut config = AutumnConfig::default();
-        config.security.csrf.enabled = true;
-        config.security.csrf.token_header = "bad header".into();
-        let settings = ingress_settings(&config).unwrap();
-        assert_eq!(settings.token_header.as_str(), DEFAULT_TOKEN_HEADER);
-        config.security.csrf.enabled = false;
-        assert!(ingress_settings(&config).is_none());
-    }
-
-    #[test]
-    fn blocker_advice_names_each_blocker() {
-        let advice = blocker_advice(&[PatchBlocker::StrictDynamic, PatchBlocker::TrustedTypes]);
-        assert!(advice.contains("'strict-dynamic'"));
-        assert!(advice.contains("require-trusted-types-for"));
-    }
-}
+mod tests;

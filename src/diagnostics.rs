@@ -30,7 +30,7 @@ pub struct TopcoatDiagnostics {
     /// The runtime prefixes.
     pub runtime_prefixes: Vec<PathPrefix>,
     /// The state of the CSRF bridge.
-    pub csrf_bridge: BridgeStatus,
+    pub csrf_bridge: CsrfBridgeStatus,
     /// The CSP analysis, or `None` when the check is `Off`.
     pub csp: Option<CspReport>,
     /// A policy that fixes the CSP findings, when the plugin can make one.
@@ -44,8 +44,9 @@ pub struct TopcoatDiagnostics {
 /// The state of the CSRF bridge at startup.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BridgeStatus {
+pub enum CsrfBridgeStatus {
     /// The bridge copies the cookie `cookie` into the header `header`.
+    #[non_exhaustive]
     Active {
         /// The CSRF cookie name.
         cookie: String,

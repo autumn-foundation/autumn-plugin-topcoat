@@ -189,6 +189,35 @@ impl TopcoatPlugin {
         self.not_found = owner;
         self
     }
+
+    /// Checks the options without an Autumn app.
+    ///
+    /// `Plugin::build` runs the same check. When the check fails, the app
+    /// stops at startup with each problem in the message.
+    ///
+    /// # Errors
+    ///
+    /// Returns each problem in the options.
+    pub fn validate(&self) -> Result<(), ConfigErrors> {
+        plan(&self.plan_input()).map(|_| ())
+    }
+
+    /// Returns the input of the build plan.
+    fn plan_input(&self) -> PlanInput<'_> {
+        let router = match &self.source {
+            None => RouterPresence::Missing,
+            Some(RouterSource::Builder(builder)) if builder.is_empty() => RouterPresence::Empty,
+            Some(RouterSource::Builder(_)) => RouterPresence::Present,
+            Some(RouterSource::Factory(_)) => RouterPresence::Factory,
+        };
+        PlanInput {
+            mount: self.mount.as_deref(),
+            excluded: &self.excluded,
+            runtime_prefixes: &self.runtime_prefixes,
+            router,
+            csrf_bridge: self.csrf_bridge,
+        }
+    }
 }
 
 impl Default for TopcoatPlugin {
@@ -222,19 +251,7 @@ impl Plugin for TopcoatPlugin {
     }
 
     fn build(self, app: AppBuilder) -> AppBuilder {
-        let presence = match &self.source {
-            None => RouterPresence::Missing,
-            Some(RouterSource::Builder(builder)) if builder.is_empty() => RouterPresence::Empty,
-            Some(RouterSource::Builder(_)) => RouterPresence::Present,
-            Some(RouterSource::Factory(_)) => RouterPresence::Factory,
-        };
-        let planned = plan(&PlanInput {
-            mount: self.mount.as_deref(),
-            excluded: &self.excluded,
-            runtime_prefixes: &self.runtime_prefixes,
-            router: presence,
-            csrf_bridge: self.csrf_bridge,
-        });
+        let planned = plan(&self.plan_input());
         let (plan, source) = match (planned, self.source) {
             (Ok(plan), Some(source)) => (plan, source),
             (Err(errors), _) => return fail(app, StartupError::Config(errors)),
@@ -297,59 +314,4 @@ fn fail(app: AppBuilder, error: StartupError) -> AppBuilder {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn assert_send_static<T: Send + 'static>() {}
-
-    #[test]
-    fn new_equals_default_and_has_the_documented_defaults() {
-        let plugin = TopcoatPlugin::new();
-        assert_eq!(
-            format!("{plugin:?}"),
-            format!("{:?}", TopcoatPlugin::default())
-        );
-        assert_eq!(plugin.name(), PLUGIN_NAME);
-        assert!(plugin.source.is_none());
-        assert!(plugin.mount.is_none());
-        assert_eq!(plugin.csrf_bridge, CsrfBridge::SameOriginRuntime);
-        assert_eq!(plugin.csp_check, CspCheck::Warn);
-        assert_eq!(plugin.not_found, NotFoundOwner::Autumn);
-    }
-
-    #[test]
-    fn plugin_and_builder_are_send_and_static() {
-        assert_send_static::<TopcoatPlugin>();
-        assert_send_static::<RouterBuilder>();
-        assert_send_static::<RouterSource>();
-    }
-
-    #[test]
-    fn setters_record_the_options() {
-        let plugin = TopcoatPlugin::new()
-            .router(Router::builder())
-            .mount_at("/app")
-            .exclude("/app/api")
-            .runtime_prefix("/app/rpc")
-            .csrf_bridge(CsrfBridge::Off)
-            .csp_check(CspCheck::Deny)
-            .not_found(NotFoundOwner::Topcoat);
-        let debug = format!("{plugin:?}");
-        assert!(debug.contains("builder"));
-        assert_eq!(plugin.mount.as_deref(), Some("/app"));
-        assert_eq!(plugin.excluded, vec!["/app/api"]);
-        assert_eq!(plugin.runtime_prefixes, vec!["/app/rpc"]);
-        assert_eq!(plugin.csrf_bridge, CsrfBridge::Off);
-        assert_eq!(plugin.csp_check, CspCheck::Deny);
-        assert_eq!(plugin.not_found, NotFoundOwner::Topcoat);
-        let factory = TopcoatPlugin::new().router_with(|_| Ok::<_, String>(Router::builder()));
-        assert!(format!("{factory:?}").contains("factory"));
-    }
-
-    #[test]
-    fn plugin_claims_no_config_section() {
-        let app = autumn_web::app().plugin(TopcoatPlugin::new().router(Router::builder()));
-        assert!(app.has_plugin(PLUGIN_NAME));
-        assert!(!app.has_config_section("topcoat"));
-    }
-}
+mod tests;
