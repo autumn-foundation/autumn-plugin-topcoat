@@ -129,8 +129,10 @@ version = "0.1.0"
 dependencies = [
  "autumn-web",
  "axum",
+ "bytes",
  "flate2",
  "http",
+ "http-body",
  "http-body-util",
  "matchit 0.8.4",
  "proptest",

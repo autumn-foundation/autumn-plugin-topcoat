@@ -16,14 +16,16 @@ categories = ["web-programming", "web-programming::http-server"]
 autumn-web = { version = ">=0.7, <0.8", default-features = false }
 # `router` only: the host app selects the other Topcoat features.
 topcoat = { version = "0.9", default-features = false, features = ["router"] }
-axum = { version = "0.8", default-features = false, features = ["matched-path", "original-uri"] }
+axum = { version = "0.8", default-features = false, features = ["matched-path", "original-uri", "tokio"] }
 http = "1"
 thiserror = "2"
 tower = { version = "0.5", default-features = false }
 tracing = "0.1"
 
 [dev-dependencies]
+bytes = "1"
 flate2 = "1"
+http-body = "1"
 http-body-util = "0.1"
 matchit = "=0.8.4"
 proptest = "1"
