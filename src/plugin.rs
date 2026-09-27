@@ -296,10 +296,10 @@ impl Plugin for TopcoatPlugin {
         let shared = Arc::new(Shared::new(plan, self.not_found, self.csp_check));
         let handler = {
             let shared = Arc::clone(&shared);
-            axum::routing::any(move |request: Request| {
-                let shared = Arc::clone(&shared);
-                async move { forward(&shared, request).await }
-            })
+            // Axum clones the handler for each request, so the closure owns its `Arc`.
+            axum::routing::any(
+                move |request: Request| async move { forward(&shared, request).await },
+            )
         };
         let routes = mount_routes(&shared.plan.templates, &handler, &method);
         let register_ingress = shared.plan.register_ingress;

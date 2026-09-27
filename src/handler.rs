@@ -34,15 +34,17 @@ pub(crate) async fn forward(shared: &Shared, request: Request) -> Response {
         *request.uri_mut() = original.0.clone();
     }
     let method = request.method().clone();
-    let path = request.uri().path().to_owned();
+    // A `Uri` clone shares its buffer, so the path costs no copy.
+    let uri = request.uri().clone();
+    let path = uri.path();
 
     if shared
         .plan
         .excluded
         .iter()
-        .any(|prefix| prefix.matches(&path))
+        .any(|prefix| prefix.matches(path))
     {
-        return fallthrough::respond(&method, &path);
+        return fallthrough::respond(&method, path);
     }
     if let Some(error) = shared.startup_errors().first() {
         return AutumnError::internal_server_error_msg(error.to_string()).into_response();
@@ -71,7 +73,7 @@ pub(crate) async fn forward(shared: &Shared, request: Request) -> Response {
     if shared.not_found == NotFoundOwner::Autumn
         && response.extensions().get::<Unmatched>().is_some()
     {
-        let mut fallback = fallthrough::respond(&method, &path);
+        let mut fallback = fallthrough::respond(&method, path);
         for cookie in response.headers().get_all(SET_COOKIE) {
             fallback.headers_mut().append(SET_COOKIE, cookie.clone());
         }

@@ -173,13 +173,15 @@ fn is_json(headers: &HeaderMap) -> bool {
 /// Rule 6: a runtime header or a canonical runtime path.
 fn has_runtime_marker(request: &BridgeRequest<'_>, policy: &BridgePolicy<'_>) -> bool {
     let headers = request.headers;
-    let rerun = only(headers, RUNTIME_HEADER).is_some_and(|value| value.as_bytes() == b"true");
-    let shard = only(headers, IDENTITY_HEADER).is_some_and(|value| !value.is_empty());
+    if only(headers, RUNTIME_HEADER).is_some_and(|value| value.as_bytes() == b"true")
+        || only(headers, IDENTITY_HEADER).is_some_and(|value| !value.is_empty())
+    {
+        return true;
+    }
     let path = request.path;
-    let runtime_path = is_canonical(path)
+    is_canonical(path)
         && (path.starts_with(RUNTIME_PATH_PREFIX)
-            || policy.runtime_prefixes.iter().any(|r| r.matches(path)));
-    rerun || shard || runtime_path
+            || policy.runtime_prefixes.iter().any(|r| r.matches(path)))
 }
 
 /// Returns `true` if `path` has no empty inner segment, no dot segment, no
@@ -188,7 +190,10 @@ fn is_canonical(path: &str) -> bool {
     path.starts_with('/')
         && !path.contains("//")
         && !path.contains('\\')
-        && !path.to_ascii_lowercase().contains("%2e")
+        && !path
+            .as_bytes()
+            .windows(3)
+            .any(|w| w[0] == b'%' && w[1] == b'2' && w[2].eq_ignore_ascii_case(&b'e'))
         && path
             .split('/')
             .all(|segment| segment != "." && segment != "..")
