@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    # Each Monday: test with the newest compatible dependency versions.
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -11,6 +15,7 @@ env:
 
 jobs:
   fmt:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,6 +26,7 @@ jobs:
       - run: cargo fmt --all -- --check
 
   clippy:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,9 +35,10 @@ jobs:
           toolchain: 1.98.1
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy --all-targets --all-features -- -D warnings
+      - run: cargo clippy --locked --all-targets --all-features -- -D warnings
 
   test:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -40,14 +47,28 @@ jobs:
           toolchain: 1.98.1
       - uses: Swatinem/rust-cache@v2
       # The library must build with only the Topcoat `router` feature.
-      - run: cargo check --lib
-      - run: cargo test --all-targets --all-features
-      - run: cargo test --doc --all-features
-      - run: cargo doc --no-deps
+      - run: cargo check --locked --lib
+      - run: cargo test --locked --all-targets --all-features
+      - run: cargo test --locked --doc --all-features
+      - run: cargo doc --locked --no-deps
         env:
           RUSTDOCFLAGS: -D warnings
 
+  # Users do not get this lockfile. This job runs the guard and parity tests
+  # with the newest autumn-web 0.7, axum 0.8 and topcoat 0.9 releases.
+  latest-deps:
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.1
+      - run: cargo update
+      - run: cargo test --all-targets --all-features
+
   route-audit:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -55,18 +76,25 @@ jobs:
         with:
           toolchain: 1.98.1
       - uses: Swatinem/rust-cache@v2
-      - name: Dump the routes of the example host
-        run: AUTUMN_DUMP_ROUTES=1 cargo run -q --example host > routes.json 2> routes.err
+      - name: Dump the routes of the example hosts
+        run: |
+          AUTUMN_DUMP_ROUTES=1 cargo run --locked -q --example host > root.json 2> root.err
+          AUTUMN_DUMP_ROUTES=1 cargo run --locked -q --example prefix_host > prefix.json 2> prefix.err
       - name: Check that the plugin routes are audit-clean
         run: |
-          if grep -q '\[autumn:omitted-routes\]' routes.err; then
-            echo "Autumn reports omitted routers"; exit 1
-          fi
-          jq -e '[.[] | select(.source == "plugin:autumn-plugin-topcoat")] | length == 2' routes.json
-          jq -e '[.[] | select(.source == "plugin:autumn-plugin-topcoat") | select(.method != "ANY" or .classification != "public")] | length == 0' routes.json
-          jq -e '[.[] | select(.classification == "unclassified")] | length == 0' routes.json
+          check() {
+            if grep -q '\[autumn:omitted-routes\]' "$1.err"; then
+              echo "Autumn reports omitted routers for $1"; exit 1
+            fi
+            jq -e --argjson n "$2" '[.[] | select(.source == "plugin:autumn-plugin-topcoat")] | length == $n' "$1.json"
+            jq -e '[.[] | select(.source == "plugin:autumn-plugin-topcoat") | select(.method != "ANY" or .classification != "public")] | length == 0' "$1.json"
+            jq -e '[.[] | select(.classification == "unclassified")] | length == 0' "$1.json"
+          }
+          check root 2
+          check prefix 4
 
   coverage:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -76,4 +104,6 @@ jobs:
           components: llvm-tools-preview
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-llvm-cov
-      - run: cargo llvm-cov --all-features --fail-under-lines 90
+      # The gate measures production code only: the unit tests in
+      # `src/**/tests.rs` do not count.
+      - run: cargo llvm-cov --locked --all-features --ignore-filename-regex '/tests\.rs$' --fail-under-lines 90

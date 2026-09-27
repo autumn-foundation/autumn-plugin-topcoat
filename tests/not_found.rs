@@ -12,7 +12,11 @@ use autumn_web::test::{TestApp, TestClient, TestResponse};
 use topcoat::context::Cx;
 use topcoat::router::error::not_found;
 use topcoat::router::response::Response;
-use topcoat::router::{Body, Layer, LayerFuture, Next, Path, Router, page, route, router};
+use topcoat::router::response::response_headers;
+use topcoat::router::{
+    Body, Compression, HeaderValue, Layer, LayerFuture, Next, Path, Router, header, page, route,
+    router,
+};
 use topcoat::runtime::RouterBuilderRuntimeExt;
 use topcoat::view::{View, view};
 use tower::ServiceExt;
@@ -55,6 +59,37 @@ impl Layer for Counter {
     }
 }
 
+/// Sets a cookie on each Topcoat response.
+struct SetCookie;
+
+impl Layer for SetCookie {
+    fn path(&self) -> Option<&Path> {
+        None
+    }
+
+    fn handle<'a>(&'a self, cx: &'a Cx, body: Body, next: Next<'a>) -> LayerFuture<'a> {
+        response_headers(cx).append(header::SET_COOKIE, HeaderValue::from_static("seen=1"));
+        next.run(cx, body)
+    }
+}
+
+/// Returns the JSON body without the `request_id` field, which differs for
+/// each request.
+fn problem(response: &TestResponse) -> serde_json::Value {
+    let mut value: serde_json::Value = serde_json::from_str(&response.text()).unwrap();
+    value.as_object_mut().unwrap().remove("request_id");
+    value
+}
+
+/// Returns the HTML body without the request id.
+fn html_without_request_id(response: &TestResponse) -> String {
+    let text = response.text();
+    match response.header("x-request-id") {
+        Some(id) => text.replace(id, ""),
+        None => text,
+    }
+}
+
 fn builder() -> topcoat::router::RouterBuilder {
     Router::builder().page(hello).route(gone).route(include)
 }
@@ -84,6 +119,14 @@ async fn unmatched_paths_get_the_autumn_404() {
             "{accept}"
         );
         assert_eq!(ours.status, 404);
+        if accept == "application/json" {
+            assert_eq!(problem(&ours), problem(&theirs));
+        } else {
+            assert_eq!(
+                html_without_request_id(&ours),
+                html_without_request_id(&theirs)
+            );
+        }
     }
     get(&with_plugin, "/nope", "application/json")
         .await
@@ -91,16 +134,46 @@ async fn unmatched_paths_get_the_autumn_404() {
         .assert_body_contains("No route matches /nope");
 }
 
-#[tokio::test]
-async fn favicon_gets_204_like_autumn() {
-    let client = client(TopcoatPlugin::new().router(builder()));
-    client.get("/favicon.ico").send().await.assert_status(204);
-    client.post("/favicon.ico").send().await.assert_status(404);
-    let head = http::Request::head("/favicon.ico")
+/// Returns the status of a `/favicon.ico` request with `method`.
+async fn favicon_status(client: TestClient, method: http::Method) -> http::StatusCode {
+    let request = http::Request::builder()
+        .method(method)
+        .uri("/favicon.ico")
         .body(axum::body::Body::empty())
         .unwrap();
-    let response = client.into_router().oneshot(head).await.unwrap();
-    assert_eq!(response.status(), 204);
+    client
+        .into_router()
+        .oneshot(request)
+        .await
+        .unwrap()
+        .status()
+}
+
+#[tokio::test]
+async fn favicon_gets_204_like_autumn() {
+    for method in [
+        http::Method::GET,
+        http::Method::HEAD,
+        http::Method::POST,
+        http::Method::OPTIONS,
+    ] {
+        let ours = favicon_status(
+            client(TopcoatPlugin::new().router(builder())),
+            method.clone(),
+        );
+        let theirs = favicon_status(
+            TestApp::new().routes(routes![autumn_page]).build(),
+            method.clone(),
+        );
+        let (ours, theirs) = (ours.await, theirs.await);
+        assert_eq!(ours, theirs, "{method}");
+        let expected = if method == http::Method::GET || method == http::Method::HEAD {
+            204
+        } else {
+            404
+        };
+        assert_eq!(ours.as_u16(), expected, "{method}");
+    }
 }
 
 #[tokio::test]
@@ -136,8 +209,10 @@ async fn an_unknown_path_rerun_ends_as_the_autumn_404() {
 
 #[tokio::test]
 async fn the_marker_survives_topcoat_compression() {
-    let client = client(TopcoatPlugin::new().router(builder()));
-    client
+    // With `min_size(0)`, Topcoat compresses the empty tagged 404 too.
+    let tagged =
+        client(TopcoatPlugin::new().router(builder().compression(Compression::new().min_size(0))));
+    tagged
         .get("/nope")
         .header("accept", "application/json")
         .header("accept-encoding", "gzip")
@@ -145,6 +220,19 @@ async fn the_marker_survives_topcoat_compression() {
         .await
         .assert_status(404)
         .assert_body_contains("No route matches /nope");
+    // The same config compresses a Topcoat 404, so compression really runs.
+    let owned = client(
+        TopcoatPlugin::new()
+            .router(builder().compression(Compression::new().min_size(0)))
+            .not_found(NotFoundOwner::Topcoat),
+    );
+    let compressed = owned
+        .get("/nope")
+        .header("accept-encoding", "gzip")
+        .send()
+        .await;
+    compressed.assert_status(404);
+    assert_eq!(compressed.header("content-encoding"), Some("gzip"));
 }
 
 #[tokio::test]
@@ -182,4 +270,37 @@ async fn sub_request_404_does_not_become_the_autumn_404() {
     let client = client(TopcoatPlugin::new().router(builder()));
     let response = get(&client, "/include", "application/json").await;
     response.assert_status(404).assert_body_eq("not found");
+}
+
+#[tokio::test]
+async fn the_autumn_404_keeps_topcoat_cookies() {
+    let client = client(TopcoatPlugin::new().router(builder().layer(SetCookie)));
+    let response = get(&client, "/nope", "application/json").await;
+    response
+        .assert_status(404)
+        .assert_body_contains("No route matches /nope");
+    assert!(
+        common::header_values(&response, "set-cookie").contains(&"seen=1".to_owned()),
+        "{:?}",
+        common::header_values(&response, "set-cookie")
+    );
+}
+
+/// The Topcoat origin check runs before endpoint matching. So a cross-site
+/// `POST` to an unknown path gets the Topcoat 403, not the Autumn 404.
+#[tokio::test]
+async fn a_cross_site_post_to_an_unknown_path_gets_the_topcoat_403() {
+    let client = client(TopcoatPlugin::new().router(builder()));
+    let response = client
+        .post("/nope")
+        .header("sec-fetch-site", "cross-site")
+        .header("origin", "https://evil.example")
+        .send()
+        .await;
+    response.assert_status(403);
+    assert!(
+        !response.text().contains("No route matches"),
+        "{}",
+        response.text()
+    );
 }

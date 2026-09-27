@@ -23,6 +23,15 @@ tower = { version = "0.5", default-features = false }
 tracing = "0.1"
 
 [dev-dependencies]
+# The common Autumn default features, so that the tests run the stack that
+# users install. `db` needs libpq, and `http-client` is not used here.
+autumn-web = { version = ">=0.7, <0.8", default-features = false, features = [
+    "maud",
+    "htmx",
+    "flash",
+    "reporting",
+    "openapi",
+] }
 bytes = "1"
 flate2 = "1"
 http-body = "1"

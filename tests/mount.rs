@@ -32,6 +32,12 @@ async fn healthz() -> topcoat::Result<&'static str> {
     Ok("topcoat healthz")
 }
 
+/// A Topcoat route under the Autumn static namespace. Autumn must win.
+#[route(GET "/static/missing.css")]
+async fn static_css() -> topcoat::Result<&'static str> {
+    Ok("topcoat static")
+}
+
 #[route(GET "/staticfoo")]
 async fn staticfoo() -> topcoat::Result<&'static str> {
     Ok("topcoat staticfoo")
@@ -78,6 +84,7 @@ fn root_plugin() -> TopcoatPlugin {
             .route(topcoat_root)
             .route(deep)
             .route(healthz)
+            .route(static_css)
             .route(staticfoo),
     )
 }
@@ -125,7 +132,7 @@ async fn framework_and_host_routes_win_over_the_catch_all() {
         .assert_body_eq("autumn users");
     let missing = client.get("/static/missing.css").send().await;
     missing.assert_status(404);
-    assert!(!missing.text().contains("topcoat"));
+    assert_ne!(missing.text(), "topcoat static");
     client
         .get("/healthz")
         .send()
@@ -191,13 +198,57 @@ async fn prefix_mount_escapes_the_root_capture() {
         .send()
         .await
         .assert_body_eq("asset");
-    let outside = client.get("/other/deep").send().await;
-    outside.assert_status(404);
-    assert!(
-        outside.text().contains("No route matches /other/deep"),
-        "{}",
-        outside.text()
+    // Outside the templates, under the mount and under `/_topcoat`, an
+    // unknown path gets the Autumn 404.
+    for path in ["/other/deep", "/app/nope", "/_topcoat/nope"] {
+        let response = client.get(path).send().await;
+        response.assert_status(404);
+        assert!(
+            response
+                .text()
+                .contains(&format!("No route matches {path}")),
+            "{path}: {}",
+            response.text()
+        );
+    }
+}
+
+/// An invalid config registers no routes, so no route conflict hides the
+/// config error.
+#[tokio::test]
+async fn an_invalid_mount_registers_no_route() {
+    let app = TestApp::new().routes(routes![slug]).plugin(
+        TopcoatPlugin::new()
+            .mount_at("/static")
+            .router(Router::builder().route(topcoat_root)),
     );
+    let panic = common::build_panic(app).expect("the startup must fail");
+    assert!(panic.contains("invalid mount path"), "{panic}");
+    assert!(!panic.contains("ConflictingRouteShape"), "{panic}");
+}
+
+/// The `/openapi.json` document does not show the plugin routes.
+#[tokio::test]
+async fn openapi_hides_the_plugin_routes() {
+    let plugin = TopcoatPlugin::new()
+        .mount_at("/app")
+        .router(Router::builder().page(app_home).page(app_x).route(asset));
+    let client = TestApp::new()
+        .openapi(autumn_web::openapi::OpenApiConfig::new("test", "1"))
+        .routes(routes![users])
+        .plugin(plugin)
+        .build();
+    let response = client.get("/openapi.json").send().await;
+    response.assert_ok();
+    let document: serde_json::Value = serde_json::from_str(&response.text()).unwrap();
+    let paths = document["paths"].as_object().expect("a paths object");
+    assert!(paths.contains_key("/api/users"), "{paths:?}");
+    for key in paths.keys() {
+        assert!(
+            !key.starts_with("/app") && !key.starts_with("/_topcoat"),
+            "plugin path {key} is in the document"
+        );
+    }
 }
 
 #[tokio::test]

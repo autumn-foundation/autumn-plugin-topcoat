@@ -180,6 +180,20 @@ fn check_csp(check: CspCheck, config: &AutumnConfig) -> CspOutcome {
         return (None, None, None);
     }
     let policy = csp::effective_policy(&config.security.headers);
+    if policy.is_empty()
+        && !config
+            .security
+            .headers
+            .content_security_policy
+            .trim()
+            .is_empty()
+    {
+        tracing::warn!(
+            target: TRACING_TARGET,
+            "Autumn sends no Content-Security-Policy header, because the configured \
+             policy is not a valid header value"
+        );
+    }
     let report = csp::analyze(&policy);
     if report.is_clean() {
         return (Some(report), None, None);

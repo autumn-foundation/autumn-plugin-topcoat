@@ -11,15 +11,22 @@ use topcoat::context::Cx;
 use topcoat::router::request::headers;
 use topcoat::router::{Router, route};
 
-/// Echoes whether Topcoat can see a CSRF header.
+/// Echoes whether Topcoat can see a CSRF header: the default name, and the
+/// custom name `x-my-token` when it is present.
 fn seen(cx: &Cx) -> String {
-    let token = headers(cx)
-        .get("x-csrf-token")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("none")
-        .to_owned();
-    format!("topcoat token={token}")
+    let value = |name: &str| {
+        headers(cx)
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned)
+    };
+    let token = value("x-csrf-token").unwrap_or_else(|| "none".to_owned());
+    let custom = value("x-my-token").map(|custom| format!(" my-token={custom}"));
+    format!("topcoat token={token}{}", custom.unwrap_or_default())
 }
+
+/// The body of the Autumn CSRF refusal.
+const CSRF_REFUSAL: &str = "CSRF token missing or invalid";
 
 #[route(POST "/page")]
 async fn page(cx: &Cx) -> topcoat::Result<String> {
@@ -44,6 +51,16 @@ async fn excluded(cx: &Cx) -> topcoat::Result<String> {
 #[post("/api/things")]
 async fn things() -> &'static str {
     "autumn things"
+}
+
+/// A host route at the plugin template `/`. It echoes the CSRF header.
+#[post("/")]
+async fn host_post(headers: axum::http::HeaderMap) -> String {
+    let token = headers
+        .get("x-csrf-token")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("none");
+    format!("host token={token}")
 }
 
 fn plugin() -> TopcoatPlugin {
@@ -202,6 +219,12 @@ async fn refuses_hostile_and_unmarked_requests() {
     for (index, (path, headers)) in cases.iter().enumerate() {
         let response = post(&client, path, headers).await;
         assert_eq!(response.status, 403, "case {index}: {}", response.text());
+        // Autumn CSRF refused it, not the Topcoat origin check.
+        assert!(
+            response.text().contains(CSRF_REFUSAL),
+            "case {index}: {}",
+            response.text()
+        );
     }
 }
 
@@ -218,6 +241,12 @@ async fn custom_cookie_and_header_names_work() {
     )
     .await;
     assert_eq!(response.status, 200, "{}", response.text());
+    // Topcoat never sees the copied custom header.
+    assert_eq!(response.text(), "topcoat token=none");
+    // The default cookie name does not count under a custom name.
+    let default_cookie = post(&client, "/page", &[JSON, RERUN, SAME, COOKIE]).await;
+    assert_eq!(default_cookie.status, 403);
+    assert!(default_cookie.text().contains(CSRF_REFUSAL));
     let diagnostics = client.state().extension::<TopcoatDiagnostics>().unwrap();
     assert!(
         matches!(
@@ -250,9 +279,17 @@ async fn signed_cookies_pass_and_tampered_cookies_fail() {
     assert_eq!(tampered.status, 403);
 }
 
+fn client_with_host_post(config: autumn_web::config::AutumnConfig) -> TestClient {
+    TestApp::new()
+        .config(config)
+        .routes(routes![things, host_post])
+        .plugin(plugin())
+        .build()
+}
+
 #[tokio::test]
 async fn with_csrf_off_the_bridge_changes_nothing() {
-    let client = client_with(common::config(), plugin());
+    let client = client_with_host_post(common::config());
     let response = post(
         &client,
         "/page",
@@ -260,8 +297,21 @@ async fn with_csrf_off_the_bridge_changes_nothing() {
     )
     .await;
     assert_eq!(response.text(), "topcoat token=client");
+    // An active bridge would copy the cookie into the host request.
+    let host = post(&client, "/", &[JSON, RERUN, SAME, COOKIE]).await;
+    assert_eq!(host.text(), "host token=none");
     let diagnostics = client.state().extension::<TopcoatDiagnostics>().unwrap();
     assert_eq!(diagnostics.csrf_bridge, CsrfBridgeStatus::InertCsrfDisabled);
+}
+
+/// A host route at a plugin template is also bridged, and it keeps the
+/// copied header. The README documents this.
+#[tokio::test]
+async fn a_host_route_at_a_plugin_template_is_bridged() {
+    let client = client_with_host_post(common::csrf_config());
+    let host = post(&client, "/", &[JSON, RERUN, SAME, COOKIE]).await;
+    assert_eq!(host.status, 200, "{}", host.text());
+    assert_eq!(host.text(), "host token=tok");
 }
 
 #[tokio::test]
@@ -269,6 +319,11 @@ async fn bridge_off_leaves_runtime_posts_to_autumn_csrf() {
     let client = client_with(common::csrf_config(), plugin().csrf_bridge(CsrfBridge::Off));
     let response = post(&client, "/page", &[JSON, RERUN, SAME, COOKIE]).await;
     assert_eq!(response.status, 403);
+    assert!(
+        response.text().contains(CSRF_REFUSAL),
+        "{}",
+        response.text()
+    );
     let diagnostics = client.state().extension::<TopcoatDiagnostics>().unwrap();
     assert_eq!(diagnostics.csrf_bridge, CsrfBridgeStatus::Off);
 }
@@ -288,5 +343,11 @@ async fn topcoat_origin_policy_stays_active() {
     )
     .await;
     assert_eq!(response.status, 403);
-    assert!(response.text().contains("forbidden"), "{}", response.text());
+    let text = response.text();
+    assert!(text.contains("forbidden"), "{text}");
+    assert!(!text.contains(CSRF_REFUSAL), "{text}");
+    assert!(
+        !text.contains("/problems/"),
+        "not an Autumn problem: {text}"
+    );
 }

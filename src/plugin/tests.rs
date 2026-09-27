@@ -86,3 +86,44 @@ fn plugin_claims_no_config_section() {
     assert!(app.has_plugin(PLUGIN_NAME));
     assert!(!app.has_config_section("topcoat"));
 }
+
+/// Returns the number of registered ingress layers.
+fn ingress_layers(app: &AppBuilder) -> usize {
+    let ingress = std::any::TypeId::of::<IngressLayer>();
+    app.get_layer_types()
+        .into_iter()
+        .filter(|layer| *layer == ingress)
+        .count()
+}
+
+fn valid() -> TopcoatPlugin {
+    TopcoatPlugin::new().router(Router::builder().route(one_route()))
+}
+
+#[test]
+fn the_default_bridge_registers_one_ingress_layer() {
+    let app = autumn_web::app().plugin(valid());
+    assert!(app.has_layer::<IngressLayer>());
+    assert_eq!(ingress_layers(&app), 1);
+}
+
+#[test]
+fn bridge_off_registers_no_layer() {
+    let app = autumn_web::app().plugin(valid().csrf_bridge(CsrfBridge::Off));
+    assert!(!app.has_layer::<IngressLayer>());
+    assert!(app.get_layer_types().is_empty());
+}
+
+#[test]
+fn an_invalid_config_registers_no_layer() {
+    let app = autumn_web::app().plugin(valid().mount_at("/static"));
+    assert!(app.get_layer_types().is_empty());
+    let app = autumn_web::app().plugin(TopcoatPlugin::new());
+    assert!(app.get_layer_types().is_empty());
+}
+
+#[test]
+fn a_second_registration_adds_no_layer() {
+    let app = autumn_web::app().plugin(valid()).plugin(valid());
+    assert_eq!(ingress_layers(&app), 1);
+}

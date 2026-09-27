@@ -425,6 +425,65 @@ fn custom_token_header_is_respected() {
 
 // ---------- properties ----------
 
+/// An independent, string-level model of the origin comparison of rule 7.
+///
+/// It does not call `crate::origin`. `authority` is the expected
+/// `host[:port]`, and `scheme` is the scheme signal of the request.
+fn model_same_origin(origin: &str, authority: &str, scheme: Option<&str>) -> bool {
+    fn valid_host(host: &str) -> bool {
+        let name = !host.is_empty()
+            && host
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"-._~".contains(&b));
+        let ipv6 = host
+            .strip_prefix('[')
+            .and_then(|h| h.strip_suffix(']'))
+            .is_some_and(|ip| ip.parse::<std::net::Ipv6Addr>().is_ok());
+        name || ipv6
+    }
+    fn split(text: &str) -> Option<(String, Option<u16>)> {
+        let (host, port) = match text.rfind(':') {
+            Some(i) if !text[i..].contains(']') => (&text[..i], Some(&text[i + 1..])),
+            _ => (text, None),
+        };
+        let port = match port {
+            None => None,
+            Some(p)
+                if !p.is_empty()
+                    && !p.starts_with('0')
+                    && p.bytes().all(|b| b.is_ascii_digit()) =>
+            {
+                Some(p.parse::<u16>().ok()?)
+            }
+            Some(_) => return None,
+        };
+        valid_host(host).then(|| (host.to_ascii_lowercase(), port))
+    }
+    let default_port = |scheme: &str| if scheme == "https" { 443 } else { 80 };
+    let lower = origin.to_ascii_lowercase();
+    let (origin_scheme, rest) = if let Some(rest) = lower.strip_prefix("http://") {
+        ("http", rest)
+    } else if let Some(rest) = lower.strip_prefix("https://") {
+        ("https", rest)
+    } else {
+        return false;
+    };
+    let signal = match scheme.map(str::to_ascii_lowercase).as_deref() {
+        None => None,
+        Some("http") => Some("http"),
+        Some("https") => Some("https"),
+        Some(_) => return false,
+    };
+    let (Some((origin_host, origin_port)), Some((host, port))) = (split(rest), split(authority))
+    else {
+        return false;
+    };
+    origin_host == host
+        && origin_port.unwrap_or_else(|| default_port(origin_scheme))
+            == port.unwrap_or_else(|| default_port(signal.unwrap_or(origin_scheme)))
+        && signal.is_none_or(|s| s == origin_scheme)
+}
+
 /// An independent model of the rule table.
 fn model(fixture: &Fixture) -> Result<String, Skip> {
     let headers = &fixture.headers;
@@ -432,8 +491,12 @@ fn model(fixture: &Fixture) -> Result<String, Skip> {
         headers
             .get_all(name)
             .iter()
-            .map(|v| v.as_bytes().to_vec())
+            .map(|v| String::from_utf8_lossy(v.as_bytes()).into_owned())
             .collect::<Vec<_>>()
+    };
+    let under = |prefix: &PathPrefix| {
+        fixture.path == prefix.as_str()
+            || fixture.path.starts_with(&format!("{}/", prefix.as_str()))
     };
     if fixture.method != Method::POST {
         return Err(Skip::NotPost);
@@ -445,9 +508,7 @@ fn model(fixture: &Fixture) -> Result<String, Skip> {
     {
         return Err(Skip::NotPluginRoute);
     }
-    if fixture.excluded.iter().any(|e| {
-        fixture.path == e.as_str() || fixture.path.starts_with(&format!("{}/", e.as_str()))
-    }) {
+    if fixture.excluded.iter().any(under) {
         return Err(Skip::Excluded);
     }
     if headers.contains_key(&fixture.token_header) {
@@ -455,7 +516,7 @@ fn model(fixture: &Fixture) -> Result<String, Skip> {
     }
     let ct = all("content-type");
     let json = ct.len() == 1
-        && String::from_utf8_lossy(&ct[0])
+        && ct[0]
             .split(';')
             .next()
             .unwrap()
@@ -473,40 +534,31 @@ fn model(fixture: &Fixture) -> Result<String, Skip> {
         && !fixture.path.contains("//")
         && !fixture.path.to_ascii_lowercase().contains("%2e")
         && !fixture.path.contains('\\');
-    let marked = (runtime.len() == 1 && runtime[0] == b"true")
+    let marked = (runtime.len() == 1 && runtime[0] == "true")
         || (identity.len() == 1 && !identity[0].is_empty())
         || (canonical
             && (fixture.path.starts_with(RUNTIME_PATH_PREFIX)
-                || fixture.runtime.iter().any(|r| {
-                    fixture.path == r.as_str()
-                        || fixture.path.starts_with(&format!("{}/", r.as_str()))
-                })));
+                || fixture.runtime.iter().any(under)));
     if !marked {
         return Err(Skip::NoRuntimeMarker);
     }
     let sfs = all("sec-fetch-site");
     let same = if sfs.is_empty() {
         let origins = all("origin");
-        let expected = fixture.identity_host.clone().map_or_else(
-            || {
-                let hosts = all("host");
-                if hosts.is_empty() {
-                    fixture.uri_authority.clone()
-                } else {
-                    (hosts.len() == 1).then(|| String::from_utf8_lossy(&hosts[0]).into_owned())
-                }
-            },
-            Some,
-        );
+        let hosts = all("host");
+        let expected = match (&fixture.identity_host, hosts.as_slice()) {
+            (Some(identity), _) => Some(identity.clone()),
+            (None, []) => fixture.uri_authority.clone(),
+            (None, [host]) => Some(host.clone()),
+            (None, _) => None,
+        };
         origins.len() == 1
-            && expected.is_some_and(|e| {
-                let origin = Origin::parse(&String::from_utf8_lossy(&origins[0]));
-                let authority = Authority::parse(&e);
-                let scheme = fixture.identity_scheme.as_deref().and_then(Scheme::parse);
-                matches!((origin, authority), (Some(o), Some(a)) if same_origin(&o, &a, scheme))
+            && hosts.len() <= 1
+            && expected.is_some_and(|expected| {
+                model_same_origin(&origins[0], &expected, fixture.identity_scheme.as_deref())
             })
     } else {
-        sfs.len() == 1 && sfs[0] == b"same-origin"
+        sfs.len() == 1 && sfs[0] == "same-origin"
     };
     if !same {
         return Err(Skip::NotSameOrigin);
@@ -517,6 +569,7 @@ fn model(fixture: &Fixture) -> Result<String, Skip> {
     }
 }
 
+/// A fixture with random values for each input of the rule table.
 fn arb_fixture() -> impl Strategy<Value = Fixture> {
     let method = prop_oneof![
         Just(Method::POST),
@@ -540,10 +593,9 @@ fn arb_fixture() -> impl Strategy<Value = Fixture> {
     ];
     let opt =
         |values: &'static [&'static str]| prop::collection::vec(prop::sample::select(values), 0..3);
+    let maybe = |values: &'static [&'static str]| prop::option::of(prop::sample::select(values));
     (
-        method,
-        matched,
-        path,
+        (method, matched, path),
         opt(&[
             "application/json",
             "application/json; charset=utf-8",
@@ -555,11 +607,20 @@ fn arb_fixture() -> impl Strategy<Value = Fixture> {
         opt(&[
             "http://localhost",
             "https://localhost",
+            "HTTP://LOCALHOST",
+            "http://localhost:8080",
+            "http://localhost:080",
+            "http://[::1]",
             "http://evil.example",
             "null",
-            "http://localhost:81",
         ]),
-        opt(&["localhost", "evil.example"]),
+        opt(&[
+            "localhost",
+            "LocalHost:80",
+            "localhost:8080",
+            "evil.example",
+            "[::1]",
+        ]),
         opt(&[
             "autumn-csrf=tok",
             "autumn-csrf=",
@@ -567,17 +628,21 @@ fn arb_fixture() -> impl Strategy<Value = Fixture> {
             "autumn-csrf=a b",
         ]),
         (
-            any::<bool>(),
-            prop::option::of(prop::sample::select(&["http", "https"][..])),
-            any::<bool>(),
-            any::<bool>(),
+            maybe(&[
+                "localhost",
+                "LOCALHOST:443",
+                "localhost:8080",
+                "evil.example",
+                "bad host",
+            ]),
+            maybe(&["http", "https", "HTTPS", "junk"]),
+            maybe(&["localhost", "localhost:8080", "[::1]", "h2.example"]),
         ),
+        (any::<bool>(), any::<bool>(), any::<bool>()),
     )
         .prop_map(
             |(
-                method,
-                matched,
-                path,
+                (method, matched, path),
                 ct,
                 rt,
                 id,
@@ -585,7 +650,8 @@ fn arb_fixture() -> impl Strategy<Value = Fixture> {
                 origin,
                 host,
                 cookie,
-                (token, scheme, excl, rt_prefix),
+                (identity_host, identity_scheme, uri_authority),
+                (token, excl, rt_prefix),
             )| {
                 let mut f = Fixture::rerun();
                 f.method = method;
@@ -612,7 +678,9 @@ fn arb_fixture() -> impl Strategy<Value = Fixture> {
                     f.headers
                         .insert("x-csrf-token", HeaderValue::from_static("client"));
                 }
-                f.identity_scheme = scheme.map(str::to_owned);
+                f.identity_host = identity_host.map(str::to_owned);
+                f.identity_scheme = identity_scheme.map(str::to_owned);
+                f.uri_authority = uri_authority.map(str::to_owned);
                 if excl {
                     f.excluded = vec![PathPrefix::new("/api").unwrap()];
                 }
@@ -624,33 +692,111 @@ fn arb_fixture() -> impl Strategy<Value = Fixture> {
         )
 }
 
-fn hostile(f: &mut Fixture, which: u8) {
-    match which % 10 {
+/// One rule-targeted change. Some changes keep the request admissible.
+fn tweak(f: &mut Fixture, which: u8) {
+    match which % 16 {
         0 => {
-            f.headers
-                .insert("sec-fetch-site", HeaderValue::from_static("cross-site"));
+            f.remove(RUNTIME_HEADER).set(IDENTITY_HEADER, "shard");
         }
         1 => {
-            f.headers
-                .append("sec-fetch-site", HeaderValue::from_static("same-origin"));
+            f.remove(RUNTIME_HEADER);
+            f.path = "/_topcoat/runtime/procedures/ab".into();
         }
         2 => {
-            f.headers.remove("sec-fetch-site");
-            f.headers
-                .insert("origin", HeaderValue::from_static("http://evil.example"));
+            f.remove("sec-fetch-site").set("origin", "http://localhost");
         }
         3 => {
-            f.headers.remove("sec-fetch-site");
-            f.headers.remove("origin");
+            f.remove("sec-fetch-site")
+                .set("origin", "https://app.example");
+            f.identity_host = Some("app.example".into());
+            f.identity_scheme = Some("https".into());
         }
         4 => {
-            f.headers
-                .append("cookie", HeaderValue::from_static("autumn-csrf=tossed"));
+            f.remove("sec-fetch-site")
+                .remove("host")
+                .set("origin", "http://h2.example:8080");
+            f.uri_authority = Some("h2.example:8080".into());
+        }
+        5 => {
+            f.set("content-type", "application/json; charset=utf-8");
+        }
+        6 => {
+            f.matched = Some("/".into());
+        }
+        7 => {
+            f.set("origin", "http://evil.example");
+        }
+        8 => {
+            f.set("host", "localhost:8080");
+        }
+        9 => {
+            f.identity_scheme = Some("https".into());
+        }
+        10 => {
+            f.set("cookie", "autumn-csrf=");
+        }
+        11 => {
+            f.set("sec-fetch-site", "same-site");
+        }
+        12 => {
+            f.remove(RUNTIME_HEADER);
+        }
+        13 => {
+            f.add("host", "localhost");
+        }
+        14 => {
+            f.uri_authority = Some("evil.example".into());
+        }
+        _ => {
+            f.identity_host = Some("LOCALHOST".into());
+        }
+    }
+}
+
+/// The admitting rerun with up to three rule-targeted changes.
+fn near_rerun() -> impl Strategy<Value = Fixture> {
+    prop::collection::vec(any::<u8>(), 0..4).prop_map(|changes| {
+        let mut f = Fixture::rerun();
+        for which in changes {
+            tweak(&mut f, which);
+        }
+        f
+    })
+}
+
+fn any_fixture() -> impl Strategy<Value = Fixture> {
+    prop_oneof![arb_fixture(), near_rerun()]
+}
+
+/// The number of hostile changes.
+const HOSTILE: u8 = 12;
+
+/// A change that no admissible request can make. Each change is hostile
+/// for every fixture.
+fn hostile(f: &mut Fixture, which: u8) {
+    match which % HOSTILE {
+        0 => {
+            f.set("sec-fetch-site", "cross-site");
+        }
+        1 => {
+            f.set("sec-fetch-site", "cross-site")
+                .add("sec-fetch-site", "same-origin");
+        }
+        2 => {
+            f.identity_host = None;
+            f.remove("sec-fetch-site")
+                .set("host", "localhost")
+                .set("origin", "http://evil.example");
+        }
+        3 => {
+            f.remove("sec-fetch-site").remove("origin");
+        }
+        4 => {
+            f.add("cookie", "autumn-csrf=a; autumn-csrf=b");
         }
         5 => f.method = Method::GET,
         6 => {
-            f.headers
-                .insert("content-type", HeaderValue::from_static("text/plain"));
+            f.set("content-type", "text/plain");
         }
         7 => f.matched = Some("/api/not-plugin".into()),
         8 => {
@@ -658,10 +804,66 @@ fn hostile(f: &mut Fixture, which: u8) {
             f.excluded
                 .push(PathPrefix::new(&format!("/{first}")).unwrap());
         }
-        _ => {
-            f.headers
-                .insert("x-csrf-token", HeaderValue::from_static("client"));
+        9 => {
+            f.set("x-csrf-token", "client");
         }
+        10 => {
+            f.remove("sec-fetch-site")
+                .set("origin", "http://localhost")
+                .set("host", "localhost")
+                .add("host", "evil.example");
+        }
+        _ => {
+            f.remove("sec-fetch-site").set("origin", "http://localhost");
+            f.identity_scheme = Some("junk".into());
+        }
+    }
+}
+
+/// Each hostile change turns the admitted rerun into a skip.
+#[test]
+fn hostile_changes_turn_inject_into_skip() {
+    for which in 0..HOSTILE {
+        let mut f = Fixture::rerun();
+        assert_eq!(f.decide(), inject("tok"));
+        hostile(&mut f, which);
+        assert!(
+            matches!(f.decide(), Decision::Skip(_)),
+            "hostile change {which} injected"
+        );
+    }
+}
+
+/// The generators reach each rule, so the model property tests all rules.
+#[test]
+fn generators_reach_each_rule() {
+    use proptest::strategy::ValueTree;
+
+    let mut runner = proptest::test_runner::TestRunner::deterministic();
+    let strategy = any_fixture();
+    let mut injects = 0;
+    let mut skips = std::collections::HashSet::new();
+    for _ in 0..512 {
+        let fixture = strategy.new_tree(&mut runner).unwrap().current();
+        match fixture.decide() {
+            Decision::Inject(_) => injects += 1,
+            Decision::Skip(skip) => {
+                skips.insert(skip);
+            }
+        }
+    }
+    assert!(injects >= 50, "only {injects} injects");
+    for skip in [
+        Skip::NotPost,
+        Skip::NotPluginRoute,
+        Skip::Excluded,
+        Skip::TokenPresent,
+        Skip::NotJson,
+        Skip::NoRuntimeMarker,
+        Skip::NotSameOrigin,
+        Skip::CookieUnusable,
+    ] {
+        assert!(skips.contains(&skip), "no fixture reached {skip:?}");
     }
 }
 
@@ -690,7 +892,7 @@ proptest! {
     }
 
     #[test]
-    fn decide_agrees_with_model(f in arb_fixture()) {
+    fn decide_agrees_with_model(f in any_fixture()) {
         let expected = match model(&f) {
             Ok(v) => Decision::Inject(HeaderValue::from_str(&v).unwrap()),
             Err(skip) => Decision::Skip(skip),
@@ -698,14 +900,20 @@ proptest! {
         prop_assert_eq!(f.decide(), expected);
     }
 
+    /// A hostile change never gives `Inject`, so a skip stays a skip.
     #[test]
-    fn hostile_changes_never_inject(mut f in arb_fixture(), which in any::<u8>()) {
+    fn hostile_changes_are_monotone(mut f in any_fixture(), which in any::<u8>()) {
+        let before = f.decide();
         hostile(&mut f, which);
-        prop_assert!(!matches!(f.decide(), Decision::Inject(_)), "hostile change {} injected", which % 10);
+        let after = f.decide();
+        prop_assert!(matches!(after, Decision::Skip(_)), "hostile change {} injected", which % HOSTILE);
+        if matches!(before, Decision::Skip(_)) {
+            prop_assert!(matches!(after, Decision::Skip(_)));
+        }
     }
 
     #[test]
-    fn never_injects_when_token_header_is_present(mut f in arb_fixture()) {
+    fn never_injects_when_token_header_is_present(mut f in any_fixture()) {
         f.headers.insert("x-csrf-token", HeaderValue::from_static("client"));
         prop_assert_eq!(f.decide(), Decision::Skip(if f.method != Method::POST {
             Skip::NotPost
@@ -719,10 +927,26 @@ proptest! {
     }
 
     #[test]
-    fn unrelated_headers_do_not_change_the_decision(f in arb_fixture(), value in "[a-z]{0,8}") {
+    fn unrelated_headers_do_not_change_the_decision(f in any_fixture(), value in "[a-z]{0,8}") {
         let before = f.decide();
         let mut g = f;
         g.headers.append("x-unrelated", HeaderValue::from_str(&value).unwrap());
         prop_assert_eq!(g.decide(), before);
+    }
+
+    /// The model origin check agrees with the parser on single values.
+    #[test]
+    fn origin_model_agrees_with_the_parser(
+        origin in prop::sample::select(&["http://localhost", "https://LOCALHOST:443", "http://[::1]:8080", "http://[abc]", "http://localhost:080", "http://localhost:0", "http://a:b:c", "ftp://localhost", "http://user@localhost"][..]),
+        authority in prop::sample::select(&["localhost", "LOCALHOST:80", "localhost:443", "[::1]:8080", "[1.2.3.4]", "localhost:", "a b"][..]),
+        scheme in prop::option::of(prop::sample::select(&["http", "HTTPS", "junk"][..])),
+    ) {
+        let parsed = Origin::parse(origin).zip(Authority::parse(authority));
+        let known = scheme.map(Scheme::parse);
+        let expected = match (parsed, known) {
+            (_, Some(None)) | (None, _) => false,
+            (Some((o, a)), known) => same_origin(&o, &a, known.flatten()),
+        };
+        prop_assert_eq!(model_same_origin(origin, authority, scheme), expected);
     }
 }

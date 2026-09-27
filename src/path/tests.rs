@@ -280,6 +280,30 @@ fn raw_path() -> impl Strategy<Value = String> {
         })
 }
 
+/// A path near the prefix `p`, so both match outcomes occur.
+fn near(p: &str) -> BoxedStrategy<String> {
+    let under = p.to_owned();
+    let longer = p.to_owned();
+    prop_oneof![
+        Just(p.to_owned()),
+        Just(format!("{p}/")),
+        Just(format!("{p}//")),
+        segment().prop_map(move |s| format!("{under}/{s}")),
+        segment().prop_map(move |s| format!("{longer}{s}")),
+        Just(p.to_ascii_uppercase()),
+        raw_path(),
+    ]
+    .boxed()
+}
+
+/// A mount (`None` is the root) and a path near it.
+fn mount_and_path() -> impl Strategy<Value = (Option<String>, String)> {
+    prop_oneof![Just(None), valid_mount().prop_map(Some)].prop_flat_map(|prefix| {
+        let paths = prefix.as_deref().map_or_else(|| raw_path().boxed(), near);
+        (Just(prefix), paths)
+    })
+}
+
 proptest! {
     #[test]
     fn prefix_new_is_total(s in any::<String>()) {
@@ -300,10 +324,16 @@ proptest! {
     }
 
     #[test]
-    fn prefix_matches_is_segment_prefix(p in valid_prefix(), path in raw_path(), extra in segment()) {
+    fn prefix_matches_is_segment_prefix(
+        (p, path) in valid_prefix().prop_flat_map(|p| (Just(p.clone()), near(&p))),
+        extra in segment(),
+    ) {
         let prefix = PathPrefix::new(&p).unwrap();
         let expected = path == p || path.starts_with(&format!("{p}/"));
         prop_assert_eq!(prefix.matches(&path), expected);
+        prop_assert!(prefix.matches(&p));
+        let child = format!("{p}/{extra}");
+        prop_assert!(prefix.matches(&child));
         // Boundary: a longer first segment never matches.
         let longer = format!("{p}{extra}");
         prop_assert!(!prefix.matches(&longer));
@@ -322,7 +352,7 @@ proptest! {
     }
 
     #[test]
-    fn covers_agrees_with_matchit(prefix in prop_oneof![Just(None), valid_mount().prop_map(Some)], path in raw_path()) {
+    fn covers_agrees_with_matchit((prefix, path) in mount_and_path()) {
         let mount = prefix.as_deref().map_or_else(MountPath::root, |p| MountPath::prefix(p).unwrap());
         let mut router = matchit::Router::new();
         for template in mount.templates() {

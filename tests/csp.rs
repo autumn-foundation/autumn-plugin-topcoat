@@ -62,12 +62,14 @@ async fn default_policy_is_reported_with_a_fix() {
         stored.csp_suggestion.as_deref(),
         Some(recommended_csp().as_str())
     );
-    assert_eq!(
-        events.count(tracing::Level::WARN),
-        2,
-        "{:?}",
-        events.messages(tracing::Level::WARN)
-    );
+    let warnings = events.messages(tracing::Level::WARN);
+    assert_eq!(warnings.len(), 2, "{warnings:?}");
+    // Each warning names its finding and gives the policy that fixes it.
+    for (warning, finding) in warnings.iter().zip(&report.findings) {
+        assert!(warning.contains(&format!("finding={finding}")), "{warning}");
+        assert!(warning.contains("advice="), "{warning}");
+        assert!(warning.contains(&recommended_csp()), "{warning}");
+    }
     assert_header_agrees(&client).await;
 }
 
@@ -88,7 +90,12 @@ async fn nonce_policy_neutralizes_inline_scripts() {
     let _serial = common::serial();
     let mut config = common::config();
     config.security.headers.csp_nonce.enabled = true;
-    let client = client(config, plugin());
+    let (client, events) = common::capture(|| client(config, plugin()));
+    let warnings = events.messages(tracing::Level::WARN);
+    assert!(!warnings.is_empty());
+    for warning in &warnings {
+        assert!(warning.contains("nonce or hash"), "{warning}");
+    }
     let stored = diagnostics(&client);
     assert_eq!(
         stored.csp.as_ref().unwrap().findings,
@@ -121,6 +128,20 @@ async fn custom_and_empty_policies_agree_with_the_header() {
     config.security.headers.content_security_policy = String::new();
     config.security.headers.csp_nonce.enabled = true;
     assert_header_agrees(&client(config, plugin())).await;
+    // Autumn sends no header for a value that is not a valid header value.
+    let mut config = common::config();
+    config.security.headers.content_security_policy =
+        "default-src 'self';\nscript-src 'self'".into();
+    let (invalid, events) = common::capture(|| client(config, plugin()));
+    assert_header_agrees(&invalid).await;
+    assert!(diagnostics(&invalid).csp.unwrap().disabled);
+    let warnings = events.messages(tracing::Level::WARN);
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.contains("not a valid header value")),
+        "{warnings:?}"
+    );
 }
 
 #[tokio::test]

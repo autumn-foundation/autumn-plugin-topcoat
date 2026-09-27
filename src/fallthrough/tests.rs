@@ -31,3 +31,23 @@ fn respond_gives_204_or_autumn_404() {
         expected.headers().get("content-type")
     );
 }
+
+proptest::proptest! {
+    #[test]
+    fn classify_agrees_with_the_contract(
+        method in proptest::sample::select(&["GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "get"][..]),
+        path in proptest::prop_oneof![
+            proptest::strategy::Just("/favicon.ico".to_owned()),
+            "/[a-z.]{0,12}",
+            "/favicon\\.ico[/a-z]{0,3}",
+        ],
+    ) {
+        let method = Method::from_bytes(method.as_bytes()).unwrap();
+        let icon = (method == Method::GET || method == Method::HEAD) && path == "/favicon.ico";
+        let expected = if icon { Fallthrough::NoContent } else { Fallthrough::NotFound };
+        proptest::prop_assert_eq!(classify(&method, &path), expected);
+        let status = respond(&method, &path).status();
+        proptest::prop_assert_eq!(status == StatusCode::NO_CONTENT, icon);
+        proptest::prop_assert_eq!(status == StatusCode::NOT_FOUND, !icon);
+    }
+}
