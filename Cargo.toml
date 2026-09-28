@@ -36,7 +36,8 @@ bytes = "1"
 flate2 = "1"
 http-body = "1"
 http-body-util = "0.1"
-matchit = "=0.8.4"
+# The route oracle. "0.8" unifies with the exact matchit version that axum pins.
+matchit = "0.8"
 proptest = "1"
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }

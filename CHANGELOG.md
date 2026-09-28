@@ -18,7 +18,7 @@ All notable changes to this crate are in this file. The format follows
 - The Autumn 404 for unknown paths (`NotFoundOwner`) and excluded prefixes (`exclude`).
 - `RemoteAddr` from `ConnectInfo` for Topcoat `remote_addr` and `client_ip`.
 - `TopcoatDiagnostics` (with `serves_http` and `startup_error`), one `info` event after a good startup, and an `error` event for each startup error.
-- Worker processes (a role that serves no HTTP) do not build the Topcoat router.
+- Worker processes and one-off task runs serve no HTTP, so they do not build the Topcoat router and do not check the CSP.
 - ADR 0001, a README in ASD-STE100 style, and the example apps `host` (root mount) and `prefix_host` (prefix mount).
 
 [0.1.0]: https://github.com/autumn-foundation/autumn-plugin-topcoat/releases/tag/v0.1.0

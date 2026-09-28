@@ -6,8 +6,8 @@
 use std::any::Any;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
-use autumn_web::AppState;
 use autumn_web::config::AutumnConfig;
+use autumn_web::{AppState, ProcessRole};
 use http::HeaderName;
 use topcoat::router::{Router, RouterBuilder};
 
@@ -23,6 +23,10 @@ use crate::tagger::UnmatchedTagger;
 /// The CSRF header that Autumn uses when the configured name is not valid.
 const DEFAULT_TOKEN_HEADER: &str = "x-csrf-token";
 
+/// The variable that makes an Autumn binary run one task and exit.
+/// `autumn task` sets it.
+const TASK_ENV: &str = "AUTUMN_RUN_TASK";
+
 /// Builds the router, reads the CSRF names, checks the CSP and stores the
 /// diagnostics.
 ///
@@ -34,14 +38,16 @@ const DEFAULT_TOKEN_HEADER: &str = "x-csrf-token";
 ///   owns 404.
 /// - With `CspCheck::Deny`, a CSP finding is a recorded `CspDenied` error.
 /// - A process that serves no HTTP does not call the closure, does not build
-///   the router and does not check the CSP.
+///   the router and does not check the CSP. A worker role and a one-off task
+///   run (`AUTUMN_RUN_TASK`) serve no HTTP.
 /// - The function records all startup errors once, and writes one `error`
 ///   event for each error.
 /// - The function stores one `TopcoatDiagnostics` extension. It writes one
 ///   `info` event only after a good startup.
 pub(crate) fn finalize(shared: &Shared, source: RouterSource, state: &AppState) {
     let config = state.config_arc();
-    let serves_http = state.role().serves_http();
+    let task = std::env::var(TASK_ENV).ok();
+    let serves_http = serves_http(state.role(), task.as_deref());
     let mut failures = Vec::new();
 
     if serves_http {
@@ -114,6 +120,15 @@ pub(crate) fn finalize(shared: &Shared, source: RouterSource, state: &AppState) 
     }
     let _ = shared.failures.set(failures);
     state.insert_extension(diagnostics);
+}
+
+/// Returns `true` if this process serves HTTP.
+///
+/// A worker role serves no HTTP. A one-off task run keeps its role, but it
+/// serves no HTTP either. Autumn starts a task run when the task variable is
+/// not blank.
+fn serves_http(role: ProcessRole, task: Option<&str>) -> bool {
+    role.serves_http() && task.is_none_or(|name| name.trim().is_empty())
 }
 
 /// Makes the builder, adds the Autumn parts and builds the router.

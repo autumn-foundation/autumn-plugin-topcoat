@@ -13,7 +13,7 @@ use crate::fallthrough;
 use crate::ingress::BridgedToken;
 use crate::options::NotFoundOwner;
 use crate::plugin::Shared;
-use crate::tagger::Unmatched;
+use crate::tagger::{ForwardedByPlugin, Unmatched};
 
 /// Forwards one request to Topcoat.
 ///
@@ -69,7 +69,11 @@ pub(crate) async fn forward(shared: &Shared, request: Request) -> Response {
     }
     request.extensions_mut().insert(ServedByAutumn);
 
-    let response = router.handle(request.map(Body::new)).await;
+    // The context marker stays across Topcoat rewrites, but a sub-request
+    // of a route does not get it.
+    let response = router
+        .handle_with(request.map(Body::new), (ForwardedByPlugin,))
+        .await;
     if shared.not_found == NotFoundOwner::Autumn
         && response.extensions().get::<Unmatched>().is_some()
     {

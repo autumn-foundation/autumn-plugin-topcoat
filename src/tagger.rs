@@ -5,20 +5,22 @@ use topcoat::router::error::NotFoundError;
 use topcoat::router::response::Response;
 use topcoat::router::{Body, Layer, LayerFuture, Next, Path, StatusCode, try_endpoint};
 
-use crate::autumn::ServedByAutumn;
-
 /// A response extension: Topcoat has no route for the request path.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Unmatched;
 
-/// Returns `true` if the forward handler sent this request.
+/// A request context value: the forward handler sent this request.
 ///
-/// A route can dispatch a sub-request with `router(cx).handle(..)`. The
-/// sub-request has no marker, so its 404 stays a Topcoat 404. A rerun keeps
-/// the marker, because Topcoat copies the request parts for a rewrite.
+/// The handler passes it with `Router::handle_with`. Topcoat keeps it across
+/// rewrites. A route can dispatch a sub-request with `router(cx).handle(..)`.
+/// The sub-request does not get the value, also when it copies the request
+/// parts, so its 404 stays a Topcoat 404.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ForwardedByPlugin;
+
+/// Returns `true` if the forward handler sent this request.
 fn forwarded_by_plugin(cx: &Cx) -> bool {
-    try_request_context::<http::request::Parts>(cx)
-        .is_some_and(|parts| parts.extensions.get::<ServedByAutumn>().is_some())
+    try_request_context::<ForwardedByPlugin>(cx).is_some()
 }
 
 /// Marks the 404 of an unmatched path with [`Unmatched`].

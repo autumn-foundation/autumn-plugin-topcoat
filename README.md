@@ -204,7 +204,7 @@ The plugin reads these Autumn keys at startup:
 - `security.csrf.enabled`, `security.csrf.cookie_name` and `security.csrf.token_header`
 - `security.headers.content_security_policy` and `security.headers.csp_nonce.enabled`
 - `idempotency.enabled`
-- `role`: a process that serves no HTTP, for example a worker, does not build the router.
+- `role` and the `AUTUMN_RUN_TASK` variable: a process that serves no HTTP does not build the router and does not check the CSP. A worker role and a one-off task run (`autumn task`) serve no HTTP.
 
 `TopcoatPlugin::validate` returns each configuration problem. An invalid option also stops the startup with a message for each problem.
 

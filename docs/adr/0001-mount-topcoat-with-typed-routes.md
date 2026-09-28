@@ -69,7 +69,7 @@ The handler removes the copied header before Topcoat gets the request. Thus Topc
 
 ### 5. CSP
 
-At startup, the plugin analyzes the effective CSP, including `sandbox`. In the default mode, the plugin writes one warning for each problem. The warning gives a policy that fixes it, when the plugin can make one. For the Autumn default policy, that policy is `recommended_csp`. With nonces on, the warning tells the user to remove the nonce sources. In the `Deny` mode, the plugin stops the startup. The plugin never changes the config. A process that serves no HTTP skips the check.
+At startup, the plugin analyzes the effective CSP, including `sandbox`. In the default mode, the plugin writes one warning for each problem. The warning gives a policy that fixes it, when the plugin can make one. For the Autumn default policy, that policy is `recommended_csp`. With nonces on, the warning tells the user to remove the nonce sources. In the `Deny` mode, the plugin stops the startup. The plugin never changes the config. A process that serves no HTTP skips the check: a worker role, or a one-off task run (`AUTUMN_RUN_TASK`).
 
 ### 6. 404 and excluded prefixes
 
@@ -85,7 +85,7 @@ The handler copies `ConnectInfo<SocketAddr>` into the Topcoat `RemoteAddr`. The 
 
 The plugin has a builder API only. It does not claim a `[topcoat]` config section.
 
-`Plugin::build` cannot return an error. The plugin keeps each error and logs it. A startup hook returns all errors, so Autumn stops a server or a task run with exit code 1. `autumn build` and `autumn replay` do not run startup hooks. For these modes, a state initializer logs a configuration error again, after telemetry starts. A process that serves no HTTP, for example a worker, does not build the router. Before the router is ready, the handler returns 503. After a failed startup, the handler returns 500. Production code does not use `unwrap` or `expect`.
+`Plugin::build` cannot return an error. The plugin keeps each error and logs it. A startup hook returns all errors, so Autumn stops a server or a task run with exit code 1. `autumn build` and `autumn replay` do not run startup hooks. For these modes, a state initializer logs a configuration error again, after telemetry starts. A process that serves no HTTP does not build the router. A worker role and a one-off task run serve no HTTP. A task run keeps the `Combined` role, so the plugin reads `AUTUMN_RUN_TASK`, as Autumn does. Before the router is ready, the handler returns 503. After a failed startup, the handler returns 500. Production code does not use `unwrap` or `expect`.
 
 ## Request flow
 

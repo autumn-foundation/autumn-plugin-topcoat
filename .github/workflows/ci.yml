@@ -65,6 +65,8 @@ jobs:
         with:
           toolchain: 1.98.1
       - run: cargo update
+      - name: Show the resolved versions
+        run: cargo tree -i axum --depth 0 && cargo tree -i autumn-web --depth 0 && cargo tree -i topcoat --depth 0
       - run: cargo test --all-targets --all-features
 
   route-audit:
