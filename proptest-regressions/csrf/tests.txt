@@ -1,0 +1,9 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 26be3e37de565d190a392893c826c905276e1b7f342c92dfba5fb4ab25538089 # shrinks to f = Fixture { method: POST, matched: Some("/{*path}"), path: "/_topcoat/runtime/%2E%2E/x", headers: {"content-type": "application/json", "host": "localhost", "sec-fetch-site": "same-origin", "cookie": "a=1; autumn-csrf=tok; b=2"}, identity_host: None, identity_scheme: None, uri_authority: None, templates: ["/", "/{*path}"], excluded: [], runtime: [PathPrefix("/rpc")], token_header: "x-csrf-token" }
+cc f6026564c289879e84a8c9c0d51057bc1bb8b07eead9908693cbd9b5f84f9efc # shrinks to f = Fixture { method: POST, matched: Some("/{*path}"), path: "/rpc/./x", headers: {"content-type": "application/json", "host": "localhost", "sec-fetch-site": "same-origin", "cookie": "a=1; autumn-csrf=tok; b=2"}, identity_host: None, identity_scheme: None, uri_authority: None, templates: ["/", "/{*path}"], excluded: [], runtime: [PathPrefix("/rpc")], token_header: "x-csrf-token" }
+cc 6f9bf7ae415139db30e835d05b270c12785e0354d74ce40265cbeba34377332b # shrinks to f = Fixture { method: POST, matched: Some("/{*path}"), path: "/rpc//x", headers: {"content-type": "application/json"}, identity_host: None, identity_scheme: None, uri_authority: None, templates: ["/", "/{*path}"], excluded: [], runtime: [PathPrefix("/rpc")], token_header: "x-csrf-token" }
