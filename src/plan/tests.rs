@@ -46,6 +46,13 @@ fn slash_prefix_error_names_no_unusable_api() {
     assert!(!text.contains("MountPath::root"), "{text}");
 }
 
+/// A runtime prefix can be the mount itself.
+#[test]
+fn runtime_prefix_can_equal_the_mount() {
+    let runtime = strings(&["/app"]);
+    assert!(plan(&input(Some("/app"), &[], &runtime)).is_ok());
+}
+
 #[test]
 fn prefix_plan_with_prefixes() {
     let excluded = strings(&["/app/api", "/app/api"]);

@@ -40,6 +40,17 @@ async fn include(cx: &Cx) -> topcoat::Result<Response> {
     Ok(router(cx).handle(inner).await)
 }
 
+/// Returns the response of a sub-request made from a copy of the request
+/// parts. The copy keeps the request extensions.
+#[route(GET "/include-parts")]
+async fn include_parts(cx: &Cx) -> topcoat::Result<Response> {
+    let mut parts = topcoat::router::request::parts(cx).clone();
+    parts.uri = "/missing-fragment".parse().unwrap();
+    Ok(router(cx)
+        .handle(http::Request::from_parts(parts, Body::empty()))
+        .await)
+}
+
 #[get("/autumn")]
 async fn autumn_page() -> &'static str {
     "autumn"
@@ -91,7 +102,11 @@ fn html_without_request_id(response: &TestResponse) -> String {
 }
 
 fn builder() -> topcoat::router::RouterBuilder {
-    Router::builder().page(hello).route(gone).route(include)
+    Router::builder()
+        .page(hello)
+        .route(gone)
+        .route(include)
+        .route(include_parts)
 }
 
 fn client(plugin: TopcoatPlugin) -> TestClient {
@@ -303,4 +318,12 @@ async fn a_cross_site_post_to_an_unknown_path_gets_the_topcoat_403() {
         "{}",
         response.text()
     );
+}
+
+/// Regression: a sub-request made from copied parts keeps its own 404.
+#[tokio::test]
+async fn sub_request_from_copied_parts_keeps_its_404() {
+    let client = client(TopcoatPlugin::new().router(builder()));
+    let response = get(&client, "/include-parts", "application/json").await;
+    response.assert_status(404).assert_body_eq("not found");
 }

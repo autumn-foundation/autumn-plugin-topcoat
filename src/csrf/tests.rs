@@ -279,6 +279,50 @@ fn skips_with_the_first_failed_rule() {
             }),
         ),
         (
+            Skip::NoRuntimeMarker,
+            Box::new(|f| {
+                f.remove(RUNTIME_HEADER);
+                f.path = "/_topcoat/runtime/%2E%2E/x".into();
+            }),
+        ),
+        (
+            Skip::NoRuntimeMarker,
+            Box::new(|f| {
+                f.remove(RUNTIME_HEADER);
+                f.path = "/_topcoat/runtime/./x".into();
+            }),
+        ),
+        (
+            Skip::NoRuntimeMarker,
+            Box::new(|f| {
+                f.remove(RUNTIME_HEADER);
+                f.path = "/_topcoat/runtime//x".into();
+            }),
+        ),
+        (
+            Skip::NoRuntimeMarker,
+            Box::new(|f| {
+                f.remove(RUNTIME_HEADER);
+                f.path = "/_topcoat/runtime/a\\b".into();
+            }),
+        ),
+        (
+            Skip::NoRuntimeMarker,
+            Box::new(|f| {
+                f.remove(RUNTIME_HEADER);
+                f.path = "/rpc/../api".into();
+                f.runtime = vec![PathPrefix::new("/rpc").unwrap()];
+            }),
+        ),
+        (
+            Skip::NoRuntimeMarker,
+            Box::new(|f| {
+                f.remove(RUNTIME_HEADER);
+                f.path = "/rpcx".into();
+                f.runtime = vec![PathPrefix::new("/rpc").unwrap()];
+            }),
+        ),
+        (
             Skip::NotSameOrigin,
             Box::new(|f| {
                 f.set("sec-fetch-site", "cross-site");
@@ -583,14 +627,7 @@ fn arb_fixture() -> impl Strategy<Value = Fixture> {
         Just(Some("/api/x".to_owned())),
         Just(None)
     ];
-    let path = prop_oneof![
-        Just("/page".to_owned()),
-        Just("/_topcoat/runtime/procedures/ab".to_owned()),
-        Just("/_topcoat/runtime/../x".to_owned()),
-        Just("/_topcoat/runtime//x".to_owned()),
-        Just("/rpc/x".to_owned()),
-        Just("/api/x".to_owned()),
-    ];
+    let path = prop::sample::select(RUNTIME_PATHS).prop_map(str::to_owned);
     let opt =
         |values: &'static [&'static str]| prop::collection::vec(prop::sample::select(values), 0..3);
     let maybe = |values: &'static [&'static str]| prop::option::of(prop::sample::select(values));
@@ -692,9 +729,29 @@ fn arb_fixture() -> impl Strategy<Value = Fixture> {
         )
 }
 
+/// Paths for the runtime-path branch of rule 6: canonical and not
+/// canonical, under the default prefix, under `/rpc`, and near `/rpc`.
+const RUNTIME_PATHS: &[&str] = &[
+    "/page",
+    "/api/x",
+    "/_topcoat/runtime/procedures/ab",
+    "/_topcoat/runtime/../x",
+    "/_topcoat/runtime/./x",
+    "/_topcoat/runtime//x",
+    "/_topcoat/runtime/%2e%2e/x",
+    "/_topcoat/runtime/%2E%2E/x",
+    "/_topcoat/runtime/a\\b",
+    "/rpc/x",
+    "/rpc",
+    "/rpc/../x",
+    "/rpc/./x",
+    "/rpc//x",
+    "/rpcx",
+];
+
 /// One rule-targeted change. Some changes keep the request admissible.
 fn tweak(f: &mut Fixture, which: u8) {
-    match which % 16 {
+    match which % 20 {
         0 => {
             f.remove(RUNTIME_HEADER).set(IDENTITY_HEADER, "shard");
         }
@@ -746,6 +803,26 @@ fn tweak(f: &mut Fixture, which: u8) {
         }
         14 => {
             f.uri_authority = Some("evil.example".into());
+        }
+        // The runtime-path branch of rule 6: no marker header, a path under
+        // the default prefix or under a runtime prefix.
+        16 => {
+            f.remove(RUNTIME_HEADER);
+            f.path = "/rpc/x".into();
+            f.runtime = vec![PathPrefix::new("/rpc").unwrap()];
+        }
+        17 => {
+            f.remove(RUNTIME_HEADER);
+            let index = usize::from(which) % RUNTIME_PATHS.len();
+            f.path = RUNTIME_PATHS[index].to_owned();
+            f.runtime = vec![PathPrefix::new("/rpc").unwrap()];
+        }
+        18 => {
+            f.excluded = vec![PathPrefix::new("/page").unwrap()];
+        }
+        19 => {
+            f.path = "/api/x".into();
+            f.excluded = vec![PathPrefix::new("/api").unwrap()];
         }
         _ => {
             f.identity_host = Some("LOCALHOST".into());
@@ -834,6 +911,19 @@ fn hostile_changes_turn_inject_into_skip() {
     }
 }
 
+/// Returns the rule 6 marker that admitted `fixture`.
+fn marker_source(fixture: &Fixture) -> &'static str {
+    if only(&fixture.headers, RUNTIME_HEADER).is_some_and(|v| v.as_bytes() == b"true") {
+        "rerun"
+    } else if fixture.headers.contains_key(IDENTITY_HEADER) {
+        "shard"
+    } else if fixture.path.starts_with(RUNTIME_PATH_PREFIX) {
+        "default path"
+    } else {
+        "runtime prefix"
+    }
+}
+
 /// The generators reach each rule, so the model property tests all rules.
 #[test]
 fn generators_reach_each_rule() {
@@ -842,17 +932,24 @@ fn generators_reach_each_rule() {
     let mut runner = proptest::test_runner::TestRunner::deterministic();
     let strategy = any_fixture();
     let mut injects = 0;
+    let mut sources = std::collections::HashSet::new();
     let mut skips = std::collections::HashSet::new();
     for _ in 0..512 {
         let fixture = strategy.new_tree(&mut runner).unwrap().current();
         match fixture.decide() {
-            Decision::Inject(_) => injects += 1,
+            Decision::Inject(_) => {
+                injects += 1;
+                sources.insert(marker_source(&fixture));
+            }
             Decision::Skip(skip) => {
                 skips.insert(skip);
             }
         }
     }
     assert!(injects >= 50, "only {injects} injects");
+    for source in ["rerun", "shard", "default path", "runtime prefix"] {
+        assert!(sources.contains(source), "no inject through {source}");
+    }
     for skip in [
         Skip::NotPost,
         Skip::NotPluginRoute,

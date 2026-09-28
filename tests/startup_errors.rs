@@ -144,17 +144,28 @@ async fn factory_error_keeps_the_cause_chain() {
     assert!(panic.contains("manifest.toml is missing"), "{panic}");
 }
 
-/// Regression: the hook names each startup problem, not only the first.
+/// Regression: the hook names each startup problem, not only the first,
+/// and the plugin writes one error event for each problem.
 #[tokio::test]
 async fn each_startup_problem_is_named() {
     let _serial = common::serial();
-    let panic = startup_panic(
+    let app = TestApp::new().plugin(
         TopcoatPlugin::new()
             .router_with(|_| Err::<topcoat::router::RouterBuilder, _>("no bundle"))
             .csp_check(autumn_plugin_topcoat::CspCheck::Deny),
     );
+    let (panic, events) = common::capture(|| common::build_panic(app));
+    let panic = panic.expect("the startup must fail");
     assert!(panic.contains("no bundle"), "{panic}");
     assert!(panic.contains("CspDenied"), "{panic}");
+    let failures: Vec<String> = events
+        .messages(tracing::Level::ERROR)
+        .into_iter()
+        .filter(|m| m.contains("failed to start"))
+        .collect();
+    assert_eq!(failures.len(), 2, "{failures:?}");
+    assert!(failures[0].contains("no bundle"), "{failures:?}");
+    assert!(failures[1].contains("CspDenied"), "{failures:?}");
 }
 
 /// Regression: a configuration error is also logged after telemetry starts.
@@ -196,15 +207,34 @@ async fn worker_processes_skip_the_router() {
     assert_eq!(diagnostics.startup_error, None);
 }
 
+/// The `AppState` that a failing factory saw.
+static FAILED_STATE: std::sync::Mutex<Option<autumn_web::AppState>> = std::sync::Mutex::new(None);
+
 /// Regression: the diagnostics record a failed startup.
 #[tokio::test]
 async fn diagnostics_record_the_startup_error() {
     let _serial = common::serial();
-    let app = TestApp::new().plugin(
-        TopcoatPlugin::new().router_with(|_| Err::<topcoat::router::RouterBuilder, _>("no bundle")),
-    );
+    let app = TestApp::new().plugin(TopcoatPlugin::new().router_with(|state| {
+        *FAILED_STATE.lock().unwrap() = Some(state.clone());
+        Err::<topcoat::router::RouterBuilder, _>("no bundle")
+    }));
     let (panic, events) = common::capture(|| common::build_panic(app));
     assert!(panic.is_some());
+    let state = FAILED_STATE
+        .lock()
+        .unwrap()
+        .take()
+        .expect("the factory ran");
+    let diagnostics = state
+        .extension::<autumn_plugin_topcoat::TopcoatDiagnostics>()
+        .expect("the diagnostics exist after a failed startup");
+    assert!(diagnostics.serves_http);
+    let error = diagnostics.startup_error.as_ref().expect("the first error");
+    assert!(
+        matches!(error, autumn_plugin_topcoat::StartupError::Factory { .. }),
+        "{error:?}"
+    );
+    assert!(error.to_string().contains("no bundle"), "{error}");
     assert_eq!(
         events.count(tracing::Level::INFO),
         0,

@@ -29,3 +29,15 @@ fn blocker_advice_names_each_blocker() {
     assert!(advice.contains("'strict-dynamic'"));
     assert!(advice.contains("require-trusted-types-for"));
 }
+
+/// Regression: a one-off task run keeps its role but serves no HTTP.
+#[test]
+fn task_runs_and_workers_serve_no_http() {
+    use autumn_web::ProcessRole;
+    assert!(serves_http(ProcessRole::Combined, None));
+    assert!(serves_http(ProcessRole::Web, None));
+    assert!(serves_http(ProcessRole::Combined, Some("  ")));
+    assert!(!serves_http(ProcessRole::Worker, None));
+    assert!(!serves_http(ProcessRole::Combined, Some("noop")));
+    assert!(!serves_http(ProcessRole::Web, Some(" noop ")));
+}
