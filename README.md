@@ -9,7 +9,7 @@ The plugin mounts one Topcoat router in an Autumn app. Both frameworks use one p
 - Topcoat pages read Autumn data: `AppState`, the config, extensions, the session and the CSRF token.
 - The plugin makes Topcoat work with Autumn CSRF, the Autumn CSP and the Autumn 404 pages.
 
-Versions: `autumn-web` 0.7, `topcoat` 0.9, Rust 1.98 or later.
+Versions: `autumn-web` 0.8, `topcoat` 0.9, Rust 1.98 or later.
 
 ## Installation
 
@@ -20,7 +20,7 @@ Add these dependencies to `Cargo.toml`:
 ```toml
 [dependencies]
 autumn-plugin-topcoat = "0.1"
-autumn-web = "0.7"
+autumn-web = "0.8"
 topcoat = "0.9"
 ```
 

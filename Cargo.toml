@@ -13,7 +13,7 @@ categories = ["web-programming", "web-programming::http-server"]
 
 [dependencies]
 # No default features: the host app selects the Autumn features.
-autumn-web = { version = ">=0.7, <0.8", default-features = false }
+autumn-web = { version = ">=0.8, <0.9", default-features = false }
 # `router` only: the host app selects the other Topcoat features.
 topcoat = { version = "0.9", default-features = false, features = ["router"] }
 axum = { version = "0.8", default-features = false, features = ["matched-path", "original-uri", "tokio"] }
@@ -25,7 +25,7 @@ tracing = "0.1"
 [dev-dependencies]
 # The common Autumn default features, so that the tests run the stack that
 # users install. `db` needs libpq, and `http-client` is not used here.
-autumn-web = { version = ">=0.7, <0.8", default-features = false, features = [
+autumn-web = { version = ">=0.8, <0.9", default-features = false, features = [
     "maud",
     "htmx",
     "flash",
