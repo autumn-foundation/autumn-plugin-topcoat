@@ -4,6 +4,12 @@ All notable changes to this crate are in this file. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The crate uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- The crate needs `autumn-web` 0.8 (`>=0.8, <0.9`). It no longer accepts 0.7.
+
 ## [0.1.0] - 2026-09-27
 
 ### Added

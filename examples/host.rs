@@ -38,13 +38,15 @@ async fn home(cx: &Cx) -> topcoat::Result<impl View> {
 
 #[autumn_web::main]
 async fn main() {
-    autumn_web::app()
-        .routes(routes![greeting])
-        .plugin(
-            TopcoatPlugin::new()
-                .router(Router::builder().page(home))
-                .exclude("/api"),
-        )
-        .run()
-        .await;
+    Box::pin(
+        autumn_web::app()
+            .routes(routes![greeting])
+            .plugin(
+                TopcoatPlugin::new()
+                    .router(Router::builder().page(home))
+                    .exclude("/api"),
+            )
+            .run(),
+    )
+    .await;
 }

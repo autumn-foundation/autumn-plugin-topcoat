@@ -4,7 +4,7 @@ Guidance for agents that work on this crate.
 
 ## What this crate is
 
-`autumn-plugin-topcoat` is an Autumn plugin. Autumn (`autumn-web` 0.7, axum 0.8.9) serves the backend. Topcoat (`topcoat` 0.9) renders the frontend. Read `docs/adr/0001-mount-topcoat-with-typed-routes.md` before a design change.
+`autumn-plugin-topcoat` is an Autumn plugin. Autumn (`autumn-web` 0.8, axum 0.8.9) serves the backend. Topcoat (`topcoat` 0.9) renders the frontend. Read `docs/adr/0001-mount-topcoat-with-typed-routes.md` before a design change.
 
 ## Commands
 

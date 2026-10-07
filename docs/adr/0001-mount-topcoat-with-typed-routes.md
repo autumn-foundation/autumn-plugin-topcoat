@@ -144,7 +144,7 @@ A script from the same origin can still send a request. The token method has the
 ### Risks
 
 - Locale routing in Autumn i18n can nest the plugin routes. The user must exclude the plugin templates: `["/", "/{*path}"]` for the root mount, `["/app", "/_topcoat"]` for the prefix mount `/app`.
-- A new field in `autumn_web::Route` stops compilation. The crate pins `autumn-web` to `>=0.7, <0.8`.
+- A new field in `autumn_web::Route` stops compilation. The crate pins `autumn-web` to `>=0.8, <0.9`.
 - Session writes after the first streamed chunk do not persist, because Autumn saves the session with the response head.
 
 ## Rejected alternatives
