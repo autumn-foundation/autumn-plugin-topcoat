@@ -36,6 +36,7 @@ fn root_routes_have_the_expected_shape() {
         assert_eq!(route.api_doc.path, route.path);
         assert_eq!(route.timeout, autumn_web::RouteTimeout::default());
         assert_eq!(route.idempotency, autumn_web::RouteIdempotency::default());
+        assert_eq!(route.criticality, autumn_web::Criticality::Default);
     }
 }
 

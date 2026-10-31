@@ -1,7 +1,7 @@
 //! The typed Autumn routes that send requests to Topcoat.
 
 use autumn_web::openapi::ApiDoc;
-use autumn_web::{AppState, Route, SeoRouteDefaults};
+use autumn_web::{AppState, Criticality, Route, SeoRouteDefaults};
 use axum::routing::MethodRouter;
 use http::Method;
 
@@ -47,6 +47,7 @@ pub(crate) fn mount_routes(
                 idempotency: autumn_web::RouteIdempotency::default(),
                 timeout: autumn_web::RouteTimeout::default(),
                 seo: SeoRouteDefaults::EMPTY,
+                criticality: Criticality::Default,
             }
         })
         .collect()
