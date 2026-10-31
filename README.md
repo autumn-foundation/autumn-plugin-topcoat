@@ -19,7 +19,7 @@ Add these dependencies to `Cargo.toml`:
 
 ```toml
 [dependencies]
-autumn-plugin-topcoat = "0.1"
+autumn-plugin-topcoat = "0.2"
 autumn-web = "0.9"
 topcoat = "0.9"
 ```
