@@ -192,7 +192,7 @@ async fn configuration_errors_are_logged_during_startup() {
 async fn worker_processes_skip_the_router() {
     let _serial = common::serial();
     let mut config = common::config();
-    config.role = autumn_web::ProcessRole::Worker;
+    config.role = autumn_web::ProcessRole::Worker.into();
     let app = TestApp::new().config(config).plugin(
         TopcoatPlugin::new()
             .router_with(|_| Err::<topcoat::router::RouterBuilder, _>("no bundle"))

@@ -48,6 +48,8 @@ pub(crate) fn mount_routes(
                 timeout: autumn_web::RouteTimeout::default(),
                 seo: SeoRouteDefaults::EMPTY,
                 criticality: Criticality::Default,
+                // `None` puts the routes in the plugin route group.
+                group: None,
             }
         })
         .collect()
