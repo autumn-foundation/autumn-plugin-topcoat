@@ -7,7 +7,7 @@ use std::any::Any;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use autumn_web::config::AutumnConfig;
-use autumn_web::{AppState, ProcessRole};
+use autumn_web::{AppState, Role};
 use http::HeaderName;
 use topcoat::router::{Router, RouterBuilder};
 
@@ -127,7 +127,7 @@ pub(crate) fn finalize(shared: &Shared, source: RouterSource, state: &AppState) 
 /// A worker role serves no HTTP. A one-off task run keeps its role, but it
 /// serves no HTTP either. Autumn starts a task run when the task variable is
 /// not blank.
-fn serves_http(role: ProcessRole, task: Option<&str>) -> bool {
+fn serves_http(role: &Role, task: Option<&str>) -> bool {
     role.serves_http() && task.is_none_or(|name| name.trim().is_empty())
 }
 

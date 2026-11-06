@@ -34,10 +34,10 @@ fn blocker_advice_names_each_blocker() {
 #[test]
 fn task_runs_and_workers_serve_no_http() {
     use autumn_web::ProcessRole;
-    assert!(serves_http(ProcessRole::Combined, None));
-    assert!(serves_http(ProcessRole::Web, None));
-    assert!(serves_http(ProcessRole::Combined, Some("  ")));
-    assert!(!serves_http(ProcessRole::Worker, None));
-    assert!(!serves_http(ProcessRole::Combined, Some("noop")));
-    assert!(!serves_http(ProcessRole::Web, Some(" noop ")));
+    assert!(serves_http(&ProcessRole::Combined.into(), None));
+    assert!(serves_http(&ProcessRole::Web.into(), None));
+    assert!(serves_http(&ProcessRole::Combined.into(), Some("  ")));
+    assert!(!serves_http(&ProcessRole::Worker.into(), None));
+    assert!(!serves_http(&ProcessRole::Combined.into(), Some("noop")));
+    assert!(!serves_http(&ProcessRole::Web.into(), Some(" noop ")));
 }
