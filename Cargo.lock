@@ -237,6 +237,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-tungstenite",
+ "toml",
  "topcoat",
  "tower",
  "tracing",
