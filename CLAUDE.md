@@ -48,6 +48,8 @@ Each pure module has a `# Contract` doc section and property tests. Change the c
 
 ## Rules that the design depends on
 
+- README Rust snippets are doctests. Make them compile; use `no_run`, not `ignore`.
+  `tests/doc_snippets.rs` checks the TOML snippets and the version pins in the docs.
 - Never use `AppBuilder::merge`, `nest` or `fallback`. Autumn replaces a plugin fallback, and `autumn routes audit` fails for merged routers.
 - Never strip a prefix. Topcoat writes absolute URLs.
 - Put data that each render needs in the Topcoat app context. WebSocket renders lose the request extensions.
