@@ -6,20 +6,18 @@ All notable changes to this crate are in this file. The format follows
 
 ## [Unreleased]
 
-### Changed
-
-- **Breaking:** Support `topcoat` 0.12. The plugin now needs `topcoat` 0.12
-  and Rust 1.99. Topcoat 0.12 merges the app and request contexts into one
-  context. The plugin adds `AppState` with `RouterBuilder::with`.
-- The README runtime example uses `RuntimeLayer`. Topcoat 0.12 removes
-  `RouterBuilderRuntimeExt`.
-
 ## [0.4.0] - 2026-11-20
 
 ### Changed
 
 - **Breaking:** Support `autumn-web` 0.11. The plugin now needs `autumn-web`
   0.11. Apps on `autumn-web` 0.10 stay on 0.3.0.
+- **Breaking:** Support `topcoat` 0.12. The plugin now needs `topcoat` 0.12
+  and Rust 1.99. Apps on `topcoat` 0.9 stay on 0.3.0. Topcoat 0.12 merges
+  the app and request contexts into one context. The plugin adds `AppState`
+  with `RouterBuilder::with`.
+- The README runtime example uses `RuntimeLayer`. Topcoat 0.12 removes
+  `RouterBuilderRuntimeExt`.
 
 ## [0.3.0] - 2026-11-06
 
