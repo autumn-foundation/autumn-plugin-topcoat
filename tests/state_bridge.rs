@@ -56,7 +56,7 @@ async fn form(cx: &Cx) -> topcoat::Result<String> {
 }
 
 #[route(POST "/form")]
-async fn form_post() -> topcoat::Result<&'static str> {
+async fn form_post(cx: &Cx) -> topcoat::Result<&'static str> {
     Ok("posted")
 }
 

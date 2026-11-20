@@ -14,15 +14,16 @@ use autumn_plugin_topcoat::{
     CsrfBridge, CsrfBridgeStatus, MountPath, NotFoundOwner, TopcoatDiagnostics, TopcoatPlugin,
 };
 use autumn_web::test::{TestApp, TestClient};
+use topcoat::context::Cx;
 use topcoat::router::{Router, route};
 
 #[route(GET "/page")]
-async fn page() -> topcoat::Result<&'static str> {
+async fn page(cx: &Cx) -> topcoat::Result<&'static str> {
     Ok("page")
 }
 
 #[route(GET "/app")]
-async fn app() -> topcoat::Result<&'static str> {
+async fn app(cx: &Cx) -> topcoat::Result<&'static str> {
     Ok("app")
 }
 

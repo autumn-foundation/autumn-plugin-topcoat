@@ -12,15 +12,16 @@ mod common;
 
 use autumn_plugin_topcoat::TopcoatPlugin;
 use autumn_web::test::TestApp;
+use topcoat::context::Cx;
 use topcoat::router::{Router, route};
 
 #[route(GET "/one")]
-async fn one() -> topcoat::Result<&'static str> {
+async fn one(cx: &Cx) -> topcoat::Result<&'static str> {
     Ok("one")
 }
 
 #[route(GET "/one")]
-async fn one_again() -> topcoat::Result<&'static str> {
+async fn one_again(cx: &Cx) -> topcoat::Result<&'static str> {
     Ok("again")
 }
 

@@ -34,7 +34,7 @@ const TASK_ENV: &str = "AUTUMN_RUN_TASK";
 ///
 /// - A panic or an error in the closure or in `build()` becomes a recorded
 ///   [`StartupError`]. No panic leaves this function.
-/// - The router gets `AppState` in its app context, and the tagger when Autumn
+/// - The router gets `AppState` in its router context, and the tagger when Autumn
 ///   owns 404.
 /// - With `CspCheck::Deny`, a CSP finding is a recorded `CspDenied` error.
 /// - A process that serves no HTTP does not call the closure, does not build
@@ -165,13 +165,13 @@ fn build_router(
     })
 }
 
-/// Adds `AppState` to the app context and, when Autumn owns 404, the tagger.
+/// Adds `AppState` to the router context and, when Autumn owns 404, the tagger.
 fn add_autumn_parts(
     builder: RouterBuilder,
     state: &AppState,
     not_found: NotFoundOwner,
 ) -> RouterBuilder {
-    let builder = builder.app_context(AutumnApp(state.clone()));
+    let builder = builder.with(AutumnApp(state.clone()));
     match not_found {
         NotFoundOwner::Autumn => builder.layer(UnmatchedTagger),
         NotFoundOwner::Topcoat => builder,

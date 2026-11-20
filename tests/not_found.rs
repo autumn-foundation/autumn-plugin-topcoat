@@ -17,17 +17,17 @@ use topcoat::router::{
     Body, Compression, HeaderValue, Layer, LayerFuture, Next, Path, Router, header, page, route,
     router,
 };
-use topcoat::runtime::RouterBuilderRuntimeExt;
+use topcoat::runtime::RuntimeLayer;
 use topcoat::view::{View, view};
 use tower::ServiceExt;
 
 #[page("/hello")]
-async fn hello() -> topcoat::Result<impl View> {
+async fn hello(cx: &Cx) -> topcoat::Result<impl View> {
     Ok(view! { <p>"hello"</p> })
 }
 
 #[route(GET "/gone")]
-async fn gone() -> topcoat::Result<&'static str> {
+async fn gone(cx: &Cx) -> topcoat::Result<&'static str> {
     Err(not_found().into())
 }
 
@@ -209,7 +209,7 @@ async fn topcoat_answers_for_matched_endpoints() {
 
 #[tokio::test]
 async fn an_unknown_path_rerun_ends_as_the_autumn_404() {
-    let client = client(TopcoatPlugin::new().router(builder().runtime()));
+    let client = client(TopcoatPlugin::new().router(builder().layer(RuntimeLayer::new())));
     client
         .post("/nope")
         .header("x-topcoat-runtime", "true")
@@ -226,7 +226,7 @@ async fn an_unknown_path_rerun_ends_as_the_autumn_404() {
 async fn the_marker_survives_topcoat_compression() {
     // With `min_size(0)`, Topcoat compresses the empty tagged 404 too.
     let tagged =
-        client(TopcoatPlugin::new().router(builder().compression(Compression::new().min_size(0))));
+        client(TopcoatPlugin::new().router(builder().with(Compression::default().min_size(0))));
     tagged
         .get("/nope")
         .header("accept", "application/json")
@@ -238,7 +238,7 @@ async fn the_marker_survives_topcoat_compression() {
     // The same config compresses a Topcoat 404, so compression really runs.
     let owned = client(
         TopcoatPlugin::new()
-            .router(builder().compression(Compression::new().min_size(0)))
+            .router(builder().with(Compression::default().min_size(0)))
             .not_found(NotFoundOwner::Topcoat),
     );
     let compressed = owned

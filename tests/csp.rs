@@ -14,10 +14,11 @@ use autumn_plugin_topcoat::csp::{CspFinding, InlineBlock, analyze, recommended_c
 use autumn_plugin_topcoat::{CspCheck, TopcoatDiagnostics, TopcoatPlugin};
 use autumn_web::config::AutumnConfig;
 use autumn_web::test::{TestApp, TestClient};
+use topcoat::context::Cx;
 use topcoat::router::{Router, route};
 
 #[route(GET "/page")]
-async fn page() -> topcoat::Result<&'static str> {
+async fn page(cx: &Cx) -> topcoat::Result<&'static str> {
     Ok("page")
 }
 
@@ -92,7 +93,7 @@ async fn nonce_policy_neutralizes_inline_scripts() {
     config.security.headers.csp_nonce.enabled = true;
     let (client, events) = common::capture(|| client(config, plugin()));
     let warnings = events.messages(tracing::Level::WARN);
-    assert!(!warnings.is_empty());
+    assert!(!warnings.is_empty(), "expected a CSP warning");
     for warning in &warnings {
         assert!(warning.contains("nonce or hash"), "{warning}");
     }

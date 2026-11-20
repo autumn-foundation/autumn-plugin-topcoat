@@ -28,33 +28,33 @@ async fn deep(cx: &Cx) -> topcoat::Result<String> {
 }
 
 #[route(GET "/healthz")]
-async fn healthz() -> topcoat::Result<&'static str> {
+async fn healthz(cx: &Cx) -> topcoat::Result<&'static str> {
     Ok("topcoat healthz")
 }
 
 /// A Topcoat route under the Autumn static namespace. Autumn must win.
 #[route(GET "/static/missing.css")]
-async fn static_css() -> topcoat::Result<&'static str> {
+async fn static_css(cx: &Cx) -> topcoat::Result<&'static str> {
     Ok("topcoat static")
 }
 
 #[route(GET "/staticfoo")]
-async fn staticfoo() -> topcoat::Result<&'static str> {
+async fn staticfoo(cx: &Cx) -> topcoat::Result<&'static str> {
     Ok("topcoat staticfoo")
 }
 
 #[page("/app")]
-async fn app_home() -> topcoat::Result<impl View> {
+async fn app_home(cx: &Cx) -> topcoat::Result<impl View> {
     Ok(view! { <p>"app home"</p> })
 }
 
 #[page("/app/x")]
-async fn app_x() -> topcoat::Result<impl View> {
+async fn app_x(cx: &Cx) -> topcoat::Result<impl View> {
     Ok(view! { <a href=(href!(app_x))>"self"</a> })
 }
 
 #[route(GET "/_topcoat/assets/app-0123456789abcdef.js")]
-async fn asset() -> topcoat::Result<&'static str> {
+async fn asset(cx: &Cx) -> topcoat::Result<&'static str> {
     Ok("asset")
 }
 
@@ -74,7 +74,7 @@ async fn slug() -> &'static str {
 }
 
 #[route(* "/")]
-async fn second() -> topcoat::Result<&'static str> {
+async fn second(cx: &Cx) -> topcoat::Result<&'static str> {
     Ok("second")
 }
 

@@ -12,6 +12,7 @@
 
 use autumn_plugin_topcoat::TopcoatPlugin;
 use autumn_web::prelude::*;
+use topcoat::context::Cx;
 use topcoat::router::{Router, page};
 use topcoat::view::{View, view};
 
@@ -24,7 +25,7 @@ async fn slug(Path(slug): Path<String>) -> String {
 
 /// A frontend page under the mount path.
 #[page("/app")]
-async fn home() -> topcoat::Result<impl View> {
+async fn home(cx: &Cx) -> topcoat::Result<impl View> {
     Ok(view! {
         <!DOCTYPE html>
         <html>

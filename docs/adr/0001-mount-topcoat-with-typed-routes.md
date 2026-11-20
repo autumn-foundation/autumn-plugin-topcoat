@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: 2026-09-27
 - Scope: crate `autumn-plugin-topcoat` 0.1
-- Targets: `autumn-web` 0.7.x (axum 0.8.9, matchit 0.8.4), `topcoat` 0.9, Rust 1.98.1
+- Targets: `autumn-web` 0.7.x (axum 0.8.9, matchit 0.8.4), `topcoat` 0.12, Rust 1.99.1
 
 ## Context
 
@@ -17,7 +17,7 @@ Autumn sets its 404 fallback after it merges the plugin routers. A fallback from
 
 Topcoat needs the full request path. Topcoat writes absolute URLs for links, assets, shards and procedures.
 
-The Topcoat runtime can render over a WebSocket with a synthetic request. That request keeps the URI, the handshake headers and `RemoteAddr`. It loses all Autumn request extensions. The Topcoat app context stays.
+The Topcoat runtime can render over a WebSocket with a synthetic request. That request keeps the URI, the handshake headers and `RemoteAddr`. It loses all Autumn request extensions. The Topcoat router context stays.
 
 The prod profile turns on Autumn CSRF. The Topcoat runtime sends JSON `POST` requests without a CSRF token. Autumn rejects each of them with 403. Exempt paths are prefixes only, and page reruns go to any page URL.
 
@@ -37,13 +37,13 @@ A prefix has segments of ASCII letters, digits, `-`, `.`, `_` and `~` only. The 
 
 ### 2. Router input
 
-The user gives a Topcoat `RouterBuilder`. As an alternative, the user gives a closure that makes the builder from `AppState`. The plugin builds the router in a state initializer. At that time, the plugin adds `AppState` to the Topcoat app context. It also adds a pathless layer that marks unmatched requests. A panic in the closure or in `build()` becomes a startup error.
+The user gives a Topcoat `RouterBuilder`. As an alternative, the user gives a closure that makes the builder from `AppState`. The plugin builds the router in a state initializer. At that time, the plugin adds `AppState` to the Topcoat router context. It also adds a pathless layer that marks unmatched requests. A panic in the closure or in `build()` becomes a startup error.
 
 ### 3. State bridge
 
-A page calls `autumn::state(cx)`, `autumn::extension::<T>(cx)` or `autumn::config(cx)` for backend access. These functions read the app context. They work in HTTP renders and in WebSocket renders.
+A page calls `autumn::state(cx)`, `autumn::extension::<T>(cx)` or `autumn::config(cx)` for backend access. These functions read the router context. They work in HTTP renders and in WebSocket renders.
 
-A page calls `autumn::csrf_token(cx)` or `autumn::session(cx)` for request data. In a WebSocket render, these functions return `RequestScopeError::Detached`. The plugin never puts request data in the app context.
+A page calls `autumn::csrf_token(cx)` or `autumn::session(cx)` for request data. In a WebSocket render, these functions return `RequestScopeError::Detached`. The plugin never puts request data in the router context.
 
 ### 4. CSRF bridge
 
@@ -151,7 +151,7 @@ A script from the same origin can still send a request. The token method has the
 
 - `merge` mount: it fails the audit and skips the preflight.
 - `fallback_service`: Autumn replaces it.
-- Built `Router` input: it has no app context, so WebSocket renders lose state and unmatched paths lose their marker.
+- Built `Router` input: it has no router context, so WebSocket renders lose state and unmatched paths lose their marker.
 - `exempt_paths`: prefixes only. The value `/` turns off CSRF for the full app.
 - JavaScript fetch shim: it needs an extra script, changes runtime internals and misses WebSocket markup.
 - Rate-limit exemption for assets: it opens a denial-of-service path.
@@ -182,7 +182,7 @@ A script from the same origin can still send a request. The token method has the
 | AC-19 | With a valid configuration, the startup stores `TopcoatDiagnostics`. It writes one info event after a good startup, and an error event for each startup error. It writes a configuration error at build time and again at startup. The plugin writes a warning when idempotency becomes fail-closed. |
 | AC-20 | Autumn skips a second registration of the plugin without a panic. The plugin claims no config section. |
 | AC-21 | README, ADR, CHANGELOG, CLAUDE.md and rustdoc exist and use ASD-STE100 style. README snippets compile as doctests. An example host binary exists. |
-| AC-22 | fmt, clippy (pedantic and nursery, `-D warnings`), tests on 1.98.1 and line coverage of production code of 90% or more pass. Production code has no `unwrap`, `expect`, `panic` or `unsafe`. CI runs these checks and the route audit. |
+| AC-22 | fmt, clippy (pedantic and nursery, `-D warnings`), tests on 1.99.1 and line coverage of production code of 90% or more pass. Production code has no `unwrap`, `expect`, `panic` or `unsafe`. CI runs these checks and the route audit. |
 | AC-23 | Guard tests pin the axum behavior that the design uses. |
 
 ## Verification

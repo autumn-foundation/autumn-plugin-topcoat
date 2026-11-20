@@ -161,7 +161,7 @@ fn unquoted_keywords_are_not_host_sources() {
     assert!(report.contains(&CspFinding::ModuleBlocked), "{report:?}");
     assert!(report.contains(&CspFinding::ConnectBlocked), "{report:?}");
     let patched = patch(policy);
-    assert!(patched.blockers.is_empty());
+    assert!(patched.blockers.is_empty(), "{:?}", patched.blockers);
     assert!(analyze(&patched.policy).is_clean(), "{}", patched.policy);
 }
 
@@ -215,7 +215,7 @@ fn effective_policy_drops_an_invalid_header_value() {
 #[test]
 fn patch_fixes_default_and_reports_blockers() {
     let patched = patch(&default_content_security_policy());
-    assert!(patched.blockers.is_empty());
+    assert!(patched.blockers.is_empty(), "{:?}", patched.blockers);
     assert_eq!(patched.policy, recommended_csp());
 
     let blocked =
@@ -260,7 +260,8 @@ fn findings_have_text() {
         CspFinding::ModuleBlocked,
         CspFinding::ConnectBlocked,
     ] {
-        assert!(!finding.to_string().is_empty());
+        let message = finding.to_string();
+        assert!(!message.is_empty(), "{finding:?} has no message");
     }
 }
 
