@@ -27,7 +27,7 @@ fn root_plan_defaults() {
     assert!(plan.mount.is_root());
     assert_eq!(plan.templates, vec!["/", "/{*path}"]);
     assert!(plan.register_ingress);
-    assert!(plan.excluded.is_empty());
+    assert!(plan.excluded.is_empty(), "{:?}", plan.excluded);
 }
 
 #[test]

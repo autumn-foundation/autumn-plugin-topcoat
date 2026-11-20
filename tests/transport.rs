@@ -22,7 +22,7 @@ use topcoat::context::Cx;
 use topcoat::router::request::remote_addr;
 use topcoat::router::response::Response;
 use topcoat::router::{Body, Router, page, route};
-use topcoat::runtime::RouterBuilderRuntimeExt;
+use topcoat::runtime::RuntimeLayer;
 use topcoat::view::{View, view};
 use tower::ServiceExt;
 
@@ -69,7 +69,7 @@ async fn addr(cx: &Cx) -> topcoat::Result<String> {
 }
 
 #[route(GET "/stream")]
-async fn stream() -> topcoat::Result<Response> {
+async fn stream(cx: &Cx) -> topcoat::Result<Response> {
     Ok(Response::new(Body::new(TwoChunks {
         sent_first: false,
         wait: None,
@@ -79,12 +79,12 @@ async fn stream() -> topcoat::Result<Response> {
 
 // Not `/live`: that is an Autumn probe path.
 #[page("/interactive")]
-async fn interactive() -> topcoat::Result<impl View> {
+async fn interactive(cx: &Cx) -> topcoat::Result<impl View> {
     Ok(view! { <p>"interactive"</p> })
 }
 
 #[page("/big")]
-async fn big() -> topcoat::Result<impl View> {
+async fn big(cx: &Cx) -> topcoat::Result<impl View> {
     let text = "Topcoat renders the frontend. ".repeat(20);
     Ok(view! { <p>(text)</p> })
 }
@@ -96,7 +96,7 @@ fn plugin() -> TopcoatPlugin {
             .route(stream)
             .page(interactive)
             .page(big)
-            .runtime(),
+            .layer(RuntimeLayer::new()),
     )
 }
 

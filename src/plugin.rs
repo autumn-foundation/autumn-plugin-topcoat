@@ -97,11 +97,12 @@ fn startup_result(errors: &[StartupError]) -> Result<(), AutumnError> {
 ///
 /// ```rust,no_run
 /// use autumn_plugin_topcoat::TopcoatPlugin;
+/// use topcoat::context::Cx;
 /// use topcoat::router::{Router, page};
 /// use topcoat::view::{View, view};
 ///
 /// #[page("/")]
-/// async fn home() -> topcoat::Result<impl View> {
+/// async fn home(cx: &Cx) -> topcoat::Result<impl View> {
 ///     Ok(view! { <h1>"Hello"</h1> })
 /// }
 ///

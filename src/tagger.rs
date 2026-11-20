@@ -1,6 +1,6 @@
 //! A pathless Topcoat layer that marks requests with no Topcoat route.
 
-use topcoat::context::{Cx, try_request_context};
+use topcoat::context::{Cx, try_context};
 use topcoat::router::error::NotFoundError;
 use topcoat::router::response::Response;
 use topcoat::router::{Body, Layer, LayerFuture, Next, Path, StatusCode, try_endpoint};
@@ -20,7 +20,7 @@ pub(crate) struct ForwardedByPlugin;
 
 /// Returns `true` if the forward handler sent this request.
 fn forwarded_by_plugin(cx: &Cx) -> bool {
-    try_request_context::<ForwardedByPlugin>(cx).is_some()
+    try_context::<ForwardedByPlugin>(cx).is_some()
 }
 
 /// Marks the 404 of an unmatched path with [`Unmatched`].

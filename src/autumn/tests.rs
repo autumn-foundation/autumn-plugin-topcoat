@@ -1,11 +1,11 @@
 //! Tests for the `autumn` module.
 
 use super::*;
-use topcoat::context::CxTestBuilder;
+use topcoat::context::Cx;
 
 #[test]
 fn helpers_outside_the_plugin_return_errors() {
-    let cx = CxTestBuilder::new().build();
+    let cx = Cx::new();
     assert!(matches!(state(&cx), Err(AppDataError::NotMounted)));
     assert!(matches!(config(&cx), Err(AppDataError::NotMounted)));
     assert!(matches!(
@@ -18,9 +18,7 @@ fn helpers_outside_the_plugin_return_errors() {
 
 #[test]
 fn helpers_with_state_but_no_request() {
-    let cx = CxTestBuilder::new()
-        .app_context(AutumnApp(AppState::for_test()))
-        .build();
+    let cx = Cx::new().with(AutumnApp(AppState::for_test()));
     assert!(state(&cx).is_ok());
     assert!(config(&cx).is_ok());
     assert_eq!(
@@ -34,7 +32,7 @@ fn helpers_with_state_but_no_request() {
 fn request_helpers_need_the_marker_and_the_values() {
     let (mut parts, ()) = http::Request::new(()).into_parts();
     parts.extensions.insert(ServedByAutumn);
-    let cx = CxTestBuilder::new().request_context(parts).build();
+    let cx = Cx::new().with(parts);
     assert_eq!(
         csrf_token(&cx),
         Err(RequestScopeError::Unavailable {

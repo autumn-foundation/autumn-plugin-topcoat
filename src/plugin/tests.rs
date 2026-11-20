@@ -74,7 +74,7 @@ fn validate_reports_each_problem() {
         .validate()
         .unwrap_err();
     assert_eq!(errors.len(), 3);
-    assert!(!errors.is_empty());
+    assert!(!errors.is_empty(), "expected a startup error");
     assert!(matches!(errors.as_slice()[0], ConfigError::NoRouter));
     assert_eq!(errors.iter().count(), (&errors).into_iter().count());
     assert_eq!(errors.into_iter().count(), 3);
@@ -111,15 +111,18 @@ fn the_default_bridge_registers_one_ingress_layer() {
 fn bridge_off_registers_no_layer() {
     let app = autumn_web::app().plugin(valid().csrf_bridge(CsrfBridge::Off));
     assert!(!app.has_layer::<IngressLayer>());
-    assert!(app.get_layer_types().is_empty());
+    let layers = app.get_layer_types();
+    assert!(layers.is_empty(), "{layers:?}");
 }
 
 #[test]
 fn an_invalid_config_registers_no_layer() {
     let app = autumn_web::app().plugin(valid().mount_at("/static"));
-    assert!(app.get_layer_types().is_empty());
+    let layers = app.get_layer_types();
+    assert!(layers.is_empty(), "{layers:?}");
     let app = autumn_web::app().plugin(TopcoatPlugin::new());
-    assert!(app.get_layer_types().is_empty());
+    let layers = app.get_layer_types();
+    assert!(layers.is_empty(), "{layers:?}");
 }
 
 #[test]

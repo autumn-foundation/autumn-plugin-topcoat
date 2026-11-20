@@ -4,7 +4,7 @@
 //! plugin serves.
 //!
 //! - App data ([`state`], [`config`], [`extension`]) comes from the Topcoat
-//!   app context. It is available in each render, also in WebSocket renders.
+//!   router context. It is available in each render, also in WebSocket renders.
 //! - Request data ([`csrf_token`], [`session`]) comes from the Autumn HTTP
 //!   request. A WebSocket render has no Autumn HTTP request, so these
 //!   functions return [`RequestScopeError::Detached`] there.
@@ -27,11 +27,11 @@ use autumn_web::AppState;
 use autumn_web::config::AutumnConfig;
 use autumn_web::security::{CsrfFormField, CsrfToken, CsrfTokenHeader};
 use autumn_web::session::Session;
-use topcoat::context::{Cx, try_app_context, try_request_context};
+use topcoat::context::{Cx, try_context};
 
 use crate::error::{AppDataError, RequestScopeError};
 
-/// The Autumn state in the Topcoat app context.
+/// The Autumn state in the Topcoat router context.
 #[derive(Clone)]
 pub(crate) struct AutumnApp(pub(crate) AppState);
 
@@ -57,7 +57,7 @@ pub struct CsrfTokenInfo {
 ///
 /// Returns [`AppDataError::NotMounted`] if this plugin does not serve the render.
 pub fn state(cx: &Cx) -> Result<&AppState, AppDataError> {
-    try_app_context::<AutumnApp>(cx)
+    try_context::<AutumnApp>(cx)
         .map(|app| &app.0)
         .ok_or(AppDataError::NotMounted)
 }
@@ -132,7 +132,7 @@ pub fn session(cx: &Cx) -> Result<Session, RequestScopeError> {
 
 /// Returns the request extensions of a render that this plugin forwarded.
 fn request_extensions(cx: &Cx) -> Result<&http::Extensions, RequestScopeError> {
-    try_request_context::<http::request::Parts>(cx)
+    try_context::<http::request::Parts>(cx)
         .map(|parts| &parts.extensions)
         .filter(|extensions| extensions.get::<ServedByAutumn>().is_some())
         .ok_or(RequestScopeError::Detached)

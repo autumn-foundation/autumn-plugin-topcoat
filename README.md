@@ -9,7 +9,7 @@ The plugin mounts one Topcoat router in an Autumn app. Both frameworks use one p
 - Topcoat pages read Autumn data: `AppState`, the config, extensions, the session and the CSRF token.
 - The plugin makes Topcoat work with Autumn CSRF, the Autumn CSP and the Autumn 404 pages.
 
-Versions: `autumn-web` 0.11, `topcoat` 0.9, Rust 1.98 or later.
+Versions: `autumn-web` 0.11, `topcoat` 0.12, Rust 1.99 or later.
 
 ## Installation
 
@@ -21,7 +21,7 @@ Add these dependencies to `Cargo.toml`:
 [dependencies]
 autumn-plugin-topcoat = "0.4"
 autumn-web = "0.11"
-topcoat = "0.9"
+topcoat = "0.12"
 ```
 
 Then register the plugin as in the [Quick start](#quick-start).
@@ -34,7 +34,7 @@ autumn plugin add autumn-plugin-topcoat
 
 The command adds the `autumn-plugin-topcoat` dependency. It prints the line `.plugin(autumn_plugin_topcoat::TopcoatPlugin::new())`. Then do these steps:
 
-1. Add `topcoat = "0.9"` to `[dependencies]`.
+1. Add `topcoat = "0.12"` to `[dependencies]`.
 2. Add the printed line to your app.
 3. Give the plugin a router, as in the Quick start: `TopcoatPlugin::new().router(Router::builder().page(home))`.
 
@@ -171,7 +171,7 @@ async fn products(cx: &Cx) -> topcoat::Result<impl View> {
 }
 
 #[route(POST "/products/add")]
-async fn add_product() -> topcoat::Result<&'static str> {
+async fn add_product(cx: &Cx) -> topcoat::Result<&'static str> {
     Ok("added")
 }
 ```
@@ -228,17 +228,17 @@ Load the bundle in `router_with`. A missing bundle then stops the startup with t
 use autumn_plugin_topcoat::TopcoatPlugin;
 use topcoat::asset::{AssetBundle, RouterBuilderAssetExt};
 use topcoat::router::module_router;
-use topcoat::runtime::RouterBuilderRuntimeExt;
+use topcoat::runtime::RuntimeLayer;
 
 fn plugin() -> TopcoatPlugin {
     TopcoatPlugin::new().router_with(|_state| {
         let bundle = AssetBundle::load()?;
-        Ok::<_, std::io::Error>(module_router!().runtime().assets(bundle))
+        Ok::<_, std::io::Error>(module_router!().layer(RuntimeLayer::new()).assets(bundle))
     })
 }
 ```
 
-Keep the Topcoat `compression` feature. Do not turn compression off with `RouterBuilder::compression`. The dev reload script of Autumn then does not buffer streamed HTML.
+Keep the Topcoat `compression` feature. Do not pass `Compression::disable()` to `RouterBuilder::with`. The dev reload script of Autumn then does not buffer streamed HTML.
 
 ## Production checklist
 
@@ -285,7 +285,7 @@ The plugin handler removes the copied header before Topcoat gets the request. Th
 - One Topcoat router for each app. Autumn skips a second registration.
 - Topcoat cannot answer other methods on a path that an Autumn route owns. Autumn answers 405.
 - The Topcoat dev server (`topcoat dev`) does not work with this plugin. Use `autumn dev`.
-- Topcoat 0.9 has no CSP nonce support, so the runtime needs `'unsafe-inline'`. The runtime compiles expressions with `new Function`, so it also needs `'unsafe-eval'`.
+- Topcoat 0.12 has no CSP nonce support, so the runtime needs `'unsafe-inline'`. The runtime compiles expressions with `new Function`, so it also needs `'unsafe-eval'`.
 
 ## Status
 

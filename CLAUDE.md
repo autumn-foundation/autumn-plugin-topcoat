@@ -4,11 +4,11 @@ Guidance for agents that work on this crate.
 
 ## What this crate is
 
-`autumn-plugin-topcoat` is an Autumn plugin. Autumn (`autumn-web` 0.11, axum 0.8.9) serves the backend. Topcoat (`topcoat` 0.9) renders the frontend. Read `docs/adr/0001-mount-topcoat-with-typed-routes.md` before a design change.
+`autumn-plugin-topcoat` is an Autumn plugin. Autumn (`autumn-web` 0.11, axum 0.8.9) serves the backend. Topcoat (`topcoat` 0.12) renders the frontend. Read `docs/adr/0001-mount-topcoat-with-typed-routes.md` before a design change.
 
 ## Commands
 
-`rust-toolchain.toml` pins the toolchain to Rust 1.98.1. Topcoat 0.9 needs 1.98.
+`rust-toolchain.toml` pins the toolchain to Rust 1.99.1. Topcoat 0.12 needs 1.99.
 
 ```sh
 cargo fmt --all -- --check
@@ -52,7 +52,7 @@ Each pure module has a `# Contract` doc section and property tests. Change the c
   `tests/doc_snippets.rs` checks the TOML snippets and the version pins in the docs.
 - Never use `AppBuilder::merge`, `nest` or `fallback`. Autumn replaces a plugin fallback, and `autumn routes audit` fails for merged routers.
 - Never strip a prefix. Topcoat writes absolute URLs.
-- Put data that each render needs in the Topcoat app context. WebSocket renders lose the request extensions.
+- Put data that each render needs in the Topcoat router context. WebSocket renders lose the request extensions.
 - The bridge must fail closed. A rule that cannot decide skips the request, and Autumn CSRF decides.
 - Production code has no `unwrap`, `expect` or `panic`. Clippy denies them outside tests.
 
